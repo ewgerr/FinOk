@@ -1,6 +1,6 @@
 import ConsultationForm from "./ConsultationForm";
 
-export default function ConsultationSection({ preselectedCategory = "" }) {
+export default function ConsultationSection({ preselectedCategory = "", freeOnly = false }) {
   return (
     <section className="py-20 lg:py-32 bg-card">
       <div className="max-w-7xl mx-auto px-6">
@@ -13,7 +13,7 @@ export default function ConsultationSection({ preselectedCategory = "" }) {
             15 хвилин, онлайн. Розберемо вашу ситуацію та запропонуємо рішення.
           </p>
         </div>
-        <ConsultationForm preselectedCategory={preselectedCategory} />
+        <ConsultationForm preselectedCategory={preselectedCategory} freeOnly={freeOnly} />
       </div>
     </section>
   );

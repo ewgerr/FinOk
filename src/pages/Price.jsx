@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { serviceCategories, allServices } from "../lib/servicesData";
 import { ArrowRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,15 @@ import { motion } from "framer-motion";
 export default function Price() {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const navigate = useNavigate();
+
+  const handleBook = (service) => {
+    const params = new URLSearchParams({
+      category: service.category,
+      service: service.name,
+    });
+    navigate(`/zapis?${params.toString()}`);
+  };
 
   const filtered = allServices.filter(s => {
     const matchCat = filter === "all" || s.category === filter;
@@ -71,9 +80,12 @@ export default function Price() {
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="font-heading text-primary whitespace-nowrap">{s.price}</span>
-                  <Link to="/select-services" className="inline-flex items-center gap-1 text-xs text-foreground/50 hover:text-primary transition-colors">
+                  <button
+                    onClick={() => handleBook(s)}
+                    className="inline-flex items-center gap-1 text-xs text-foreground/50 hover:text-primary transition-colors"
+                  >
                     Записатися <ArrowRight className="w-3 h-3" />
-                  </Link>
+                  </button>
                 </div>
               </motion.div>
             ))}

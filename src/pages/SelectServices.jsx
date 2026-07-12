@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Minus, Plus, ChevronDown, ArrowRight, ArrowLeft, X } from "lucide-react";
 import { serviceCategories } from "../lib/servicesData";
 import ConsultationForm from "../components/ConsultationForm";
+import { useSearchParams } from "react-router-dom";
 
 // parse "від 1 500 ₴/міс" → 1500 (for total calc; "від" = starting price)
 function parsePrice(str) {
@@ -13,11 +14,25 @@ function parsePrice(str) {
 }
 
 export default function SelectServices() {
+  const [searchParams] = useSearchParams();
+  const urlCategory = searchParams.get("category") || "";
+  const urlService = searchParams.get("service") || "";
+
   const [selected, setSelected] = useState({}); // { serviceKey: qty }
   const [openCats, setOpenCats] = useState(() => Object.fromEntries(serviceCategories.map(c => [c.id, true])));
-  const [step, setStep] = useState("select"); // select | form
-  const [preselectedCategory, setPreselectedCategory] = useState("");
-  const [preselectedServiceName, setPreselectedServiceName] = useState("");
+  const [step, setStep] = useState(() => urlCategory ? "form" : "select"); // select | form
+  const [preselectedCategory, setPreselectedCategory] = useState(urlCategory);
+  const [preselectedServiceName, setPreselectedServiceName] = useState(urlService);
+
+  // If URL params arrive after mount (navigation), sync immediately
+  useEffect(() => {
+    if (urlCategory) {
+      setPreselectedCategory(urlCategory);
+      setPreselectedServiceName(urlService);
+      setStep("form");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [urlCategory, urlService]);
 
   const flatServices = useMemo(() => serviceCategories.flatMap(c => c.services.map(s => ({ ...s, catId: c.id, catTitle: c.shortTitle, key: `${c.id}__${s.name}` }))), []);
 

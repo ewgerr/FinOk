@@ -156,6 +156,19 @@ enum ConsultationType {
   PAID
 }
 
+// Review model (client testimonials)
+model Review {
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  text        String
+  rating      Int      @default(5)
+  isApproved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("reviews")
+}
+
 enum UserRole {
   ADMIN
   MANAGER

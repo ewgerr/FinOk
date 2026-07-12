@@ -294,6 +294,13 @@ const orderSchema = z.object({
   serviceId: z.string().min(1),
 });
 
+const reviewSchema = z.object({
+  name: z.string().min(2).max(100),
+  role: z.string().max(100).optional().nullable(),
+  text: z.string().min(10).max(2000),
+  rating: z.coerce.number().int().min(1).max(5).default(5),
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -857,6 +864,47 @@ app.get('/api/entities/Order', authMiddleware, asyncHandler(async (req, res) => 
   });
 
   res.json(orders);
+}));
+
+// ============ REVIEWS ============
+
+// Public: get approved reviews
+app.get('/api/reviews', asyncHandler(async (req, res) => {
+  const reviews = await prisma.review.findMany({
+    where: { isApproved: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(reviews);
+}));
+
+// Public: submit a review (goes to moderation)
+app.post('/api/reviews', validateBody(reviewSchema), asyncHandler(async (req, res) => {
+  const { name, role, text, rating } = req.body;
+  const review = await prisma.review.create({
+    data: { name, role: role || null, text, rating: Number(rating) || 5, isApproved: false },
+  });
+  res.status(201).json({ id: review.id, message: 'Дякую́! Ваш відгук надіслано на модерацію.' });
+}));
+
+// Admin: list all reviews (incl. pending)
+app.get('/api/admin/reviews', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const reviews = await prisma.review.findMany({ orderBy: { createdAt: 'desc' } });
+  res.json(reviews);
+}));
+
+// Admin: approve / reject review
+app.patch('/api/admin/reviews/:id', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { isApproved } = req.body;
+  if (typeof isApproved !== 'boolean') throw new AppError(400, 'isApproved must be boolean');
+  const review = await prisma.review.update({ where: { id }, data: { isApproved } });
+  res.json(review);
+}));
+
+// Admin: delete review
+app.delete('/api/admin/reviews/:id', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
+  await prisma.review.delete({ where: { id: req.params.id } });
+  res.status(204).end();
 }));
 
 // ============ Error Handling ============

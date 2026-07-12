@@ -7,8 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CheckCircle } from "lucide-react";
 import { serviceCategories } from "@/lib/servicesData";
 
-export default function ConsultationForm({ preselectedCategory = "", preselectedServiceName = "" }) {
-  const isPaidFlow = Boolean(preselectedCategory || preselectedServiceName);
+export default function ConsultationForm({ preselectedCategory = "", preselectedServiceName = "", freeOnly = false }) {
+  // freeOnly = true → завжди FREE незалежно від props
+  const isPaidFlow = !freeOnly && Boolean(preselectedCategory || preselectedServiceName);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -44,7 +45,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
   }, [form.selectedCategoryId, normalizedCategory]);
 
   useEffect(() => {
-    if (!isPaidFlow) return;
+    if (!isPaidFlow) return;  // covers freeOnly=true too
 
     const category = normalizedCategory || serviceCategories[0] || null;
     if (!category) return;

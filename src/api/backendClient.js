@@ -84,5 +84,10 @@ export const apiClient = {
     stats: async () => requestJson('/api/admin/stats'),
     notifications: async () => requestJson('/api/admin/notifications'),
     auditLogs: async () => requestJson('/api/admin/audit-logs'),
+    reviews: {
+      list: async () => requestJson('/api/admin/reviews'),
+      patch: async (id, payload) => request(`/api/admin/reviews/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+      remove: async (id) => request(`/api/admin/reviews/${id}`, { method: 'DELETE' }),
+    },
   }
 };

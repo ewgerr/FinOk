@@ -29,7 +29,7 @@ export default function Contacts() {
           </div>
         </div>
       </section>
-      <ConsultationSection />
+      <ConsultationSection freeOnly={true} />
     </div>
   );
 }

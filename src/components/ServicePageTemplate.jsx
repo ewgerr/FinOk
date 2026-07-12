@@ -54,7 +54,7 @@ export default function ServicePageTemplate({ category }) {
       </section>
 
       <FAQSection items={category.faq} />
-      <ConsultationSection preselectedCategory={category.shortTitle} />
+      <ConsultationSection preselectedCategory={category.shortTitle} freeOnly={true} />
     </div>
   );
 }

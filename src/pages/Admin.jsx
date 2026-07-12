@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3 } from "lucide-react";
+import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2 } from "lucide-react";
 
 const statusOptions = ["", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const typeOptions = ["", "FREE", "PAID"];
@@ -77,6 +77,21 @@ export default function Admin() {
     queryFn: () => apiClient.admin.auditLogs(),
   });
 
+  const reviewsQuery = useQuery({
+    queryKey: ["admin-reviews"],
+    queryFn: () => apiClient.admin.reviews.list(),
+  });
+
+  const reviewPatchMutation = useMutation({
+    mutationFn: ({ id, isApproved }) => apiClient.admin.reviews.patch(id, { isApproved }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-reviews"] }),
+  });
+
+  const reviewDeleteMutation = useMutation({
+    mutationFn: (id) => apiClient.admin.reviews.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-reviews"] }),
+  });
+
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }) => apiClient.admin.consultations.update(id, payload),
     onSuccess: async () => {
@@ -93,6 +108,7 @@ export default function Admin() {
   const consultations = consultationsQuery.data || [];
   const notifications = notificationsQuery.data || [];
   const auditLogs = auditLogsQuery.data || [];
+  const reviews = reviewsQuery.data || [];
 
   const paidShare = useMemo(() => {
     if (!stats.total) return 0;
@@ -105,6 +121,7 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ["admin-consultations"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-reviews"] }),
     ]);
   };
 
@@ -134,11 +151,12 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="consultations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-[680px]">
-            <TabsTrigger value="consultations">Consultations</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="audit">Audit</TabsTrigger>
-            <TabsTrigger value="filters">Filters</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-5 lg:w-[850px]">
+            <TabsTrigger value="consultations">Консультації</TabsTrigger>
+            <TabsTrigger value="reviews">Відгуки</TabsTrigger>
+            <TabsTrigger value="notifications">Повідомлення</TabsTrigger>
+            <TabsTrigger value="audit">Аудит</TabsTrigger>
+            <TabsTrigger value="filters">Фільтри</TabsTrigger>
           </TabsList>
 
           <TabsContent value="consultations" className="space-y-4">
@@ -231,6 +249,55 @@ export default function Admin() {
                     </tbody>
                   </table>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reviews">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Відгуки ({reviews.filter(r => !r.isApproved).length} нових)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {reviews.map((r) => (
+                  <div key={r.id} className="p-4 rounded-lg border border-border space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">{r.name}</span>
+                          {r.role && <span className="text-xs text-muted-foreground">{r.role}</span>}
+                          <div className="flex gap-0.5">
+                            {[1,2,3,4,5].map(s => (
+                              <Star key={s} className={`w-3 h-3 ${s <= r.rating ? 'fill-primary text-primary' : 'text-muted-foreground/20'}`} />
+                            ))}
+                          </div>
+                          <Badge variant={r.isApproved ? 'default' : 'secondary'}>{r.isApproved ? 'Опубліковано' : 'На модерації'}</Badge>
+                        </div>
+                        <p className="text-sm text-foreground/80">{r.text}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(r.createdAt)}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {!r.isApproved && (
+                          <Button size="sm" variant="outline" className="gap-1 text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => reviewPatchMutation.mutate({ id: r.id, isApproved: true })}>
+                            <CheckCircle className="w-4 h-4" /> Схвалити
+                          </Button>
+                        )}
+                        {r.isApproved && (
+                          <Button size="sm" variant="outline" className="gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
+                            onClick={() => reviewPatchMutation.mutate({ id: r.id, isApproved: false })}>
+                            <XCircle className="w-4 h-4" /> Сприховати
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10"
+                          onClick={() => reviewDeleteMutation.mutate(r.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!reviews.length && <p className="text-sm text-muted-foreground">Поки немає відгуків.</p>}
               </CardContent>
             </Card>
           </TabsContent>

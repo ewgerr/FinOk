@@ -17,7 +17,7 @@ export default function Home() {
       <ServicesOverview />
       <HowWeWorkSection />
       <TestimonialsSection />
-      <ConsultationSection />
+      <ConsultationSection freeOnly={true} />
     </div>
   );
 }
