@@ -7,6 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CheckCircle } from "lucide-react";
 import { serviceCategories } from "@/lib/servicesData";
 
+const contactMethodLabels = {
+  PHONE: "Дзвінок",
+  TELEGRAM: "Telegram",
+  EMAIL: "Email",
+};
+
 export default function ConsultationForm({ preselectedCategory = "", preselectedServiceName = "", freeOnly = false }) {
   // freeOnly = true → завжди FREE незалежно від props
   const isPaidFlow = !freeOnly && Boolean(preselectedCategory || preselectedServiceName);
@@ -16,6 +22,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
     lastName: "",
     email: "",
     phone: "",
+    preferredContactMethod: "PHONE",
     consultationType: isPaidFlow ? "PAID" : "FREE",
     selectedCategoryId: "",
     selectedService: null,
@@ -24,7 +31,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
     description: "",
     consent: false,
   });
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedData, setSubmittedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -122,8 +129,10 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.firstName || !form.email || !form.phone || !form.preferredDate || !form.selectedSlot || !form.consent) {
-      alert("Будь ласка, заповніть всі обов'язкові поля та погодьтеся з政策конфіденційності");
+    const needDirectContact = form.preferredContactMethod === "PHONE" || form.preferredContactMethod === "TELEGRAM";
+
+    if (!form.firstName || !form.email || !form.preferredDate || !form.selectedSlot || !form.consent || (needDirectContact && !form.phone)) {
+      alert("Будь ласка, заповніть всі обов'язкові поля та погодьтеся з політикою конфіденційності.");
       return;
     }
 
@@ -138,11 +147,12 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
 
     setLoading(true);
     try {
-      await apiClient.entities.Consultation.create({
+      const created = await apiClient.entities.Consultation.create({
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phone: form.phone,
+        phone: form.phone || null,
+        preferredContactMethod: form.preferredContactMethod,
         description: form.description,
         consultationType,
         serviceId: null,
@@ -153,7 +163,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
         estimatedDuration,
         preferredDateTime: buildPreferredDateTime(),
       });
-      setSubmitted(true);
+      setSubmittedData(created || { googleMeetLink: "https://meet.google.com/new" });
     } catch (error) {
       console.error("Consultation submission error:", error);
       alert(
@@ -164,7 +174,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
     }
   };
 
-  if (submitted) {
+  if (submittedData) {
     return (
       <div className="text-center py-12">
         <CheckCircle className="w-12 h-12 text-primary mx-auto mb-4" />
@@ -172,6 +182,10 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
         <p className="text-muted-foreground">
           Ми зв'яжемося з вами найближчим часом.
         </p>
+        <div className="mt-4 p-4 rounded-lg border border-border bg-card max-w-xl mx-auto text-left">
+          <p className="text-sm font-medium mb-2">Формат комунікації: {contactMethodLabels[submittedData.preferredContactMethod] || "Email"}</p>
+          <p className="text-sm text-muted-foreground">Деталі зустрічі менеджер надішле окремо у вибраному каналі.</p>
+        </div>
       </div>
     );
   }
@@ -224,18 +238,43 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
         </div>
         <div>
           <Label className="text-sm text-foreground/70">
-            Телефон або Telegram *
+            Зручний канал комунікації *
           </Label>
-          <Input
-            value={form.phone}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, phone: e.target.value }))
+          <Select
+            value={form.preferredContactMethod}
+            onValueChange={(value) =>
+              setForm((f) => ({ ...f, preferredContactMethod: value }))
             }
-            required
-            className="mt-1 bg-card border-border"
-            placeholder="+380 501 234 567"
-          />
+          >
+            <SelectTrigger className="mt-1 bg-card border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="PHONE">Дзвінок</SelectItem>
+              <SelectItem value="TELEGRAM">Telegram</SelectItem>
+              <SelectItem value="EMAIL">Email</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+      </div>
+
+      <div>
+        <Label className="text-sm text-foreground/70">
+          {form.preferredContactMethod === "PHONE"
+            ? "Телефон *"
+            : form.preferredContactMethod === "TELEGRAM"
+              ? "Telegram (@username або номер) *"
+              : "Телефон / Telegram (опціонально)"}
+        </Label>
+        <Input
+          value={form.phone}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, phone: e.target.value }))
+          }
+          required={form.preferredContactMethod !== "EMAIL"}
+          className="mt-1 bg-card border-border"
+          placeholder={form.preferredContactMethod === "TELEGRAM" ? "@username або +380..." : "+380 501 234 567"}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

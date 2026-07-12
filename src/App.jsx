@@ -26,10 +26,43 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Admin from './pages/Admin';
 import AdminRoute from './components/AdminRoute';
+import { ADMIN_PATH } from '@/lib/adminPath';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const sentKey = `finok_visit_sent_${dayKey}`;
+    const existingSent = localStorage.getItem(sentKey);
+    if (existingSent) return;
+
+    let visitorId = localStorage.getItem('finok_visitor_id');
+    if (!visitorId) {
+      visitorId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('finok_visitor_id', visitorId);
+    }
+
+    fetch('/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitorId,
+        path: location.pathname,
+        referrer: document.referrer || null,
+        title: document.title || null,
+      }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          localStorage.setItem(sentKey, '1');
+        }
+      })
+      .catch(() => {});
+  }, [location.pathname]);
 
   // Track page views
   useEffect(() => {
@@ -61,7 +94,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route element={<AdminRoute />}>
-        <Route path="/admin" element={<Admin />} />
+        <Route path={ADMIN_PATH} element={<Admin />} />
       </Route>
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />

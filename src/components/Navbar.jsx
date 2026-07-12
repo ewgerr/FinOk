@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { serviceCategories } from "../lib/servicesData";
 import { useAuth } from "@/lib/AuthContext";
+import { ADMIN_PATH } from "@/lib/adminPath";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -53,13 +54,19 @@ export default function Navbar() {
               </div>
             )}
           </div>
-          {navLinks.map(l => (
-            <Link key={l.to} to={l.to} className="text-sm font-body text-foreground/70 hover:text-primary transition-colors">
+          {navLinks.map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              className={({ isActive }) =>
+                `text-sm font-body transition-colors ${isActive ? "text-primary" : "text-foreground/70 hover:text-primary"}`
+              }
+            >
               {l.label}
-            </Link>
+            </NavLink>
           ))}
           {user?.role === 'ADMIN' && (
-            <Link to="/admin" className="text-sm font-body text-foreground/70 hover:text-primary transition-colors">
+            <Link to={ADMIN_PATH} className="text-sm font-body text-foreground/70 hover:text-primary transition-colors">
               Admin
             </Link>
           )}
@@ -90,13 +97,19 @@ export default function Navbar() {
                 ))}
               </div>
             )}
-            {navLinks.map(l => (
-              <Link key={l.to} to={l.to} className="block py-3 text-sm text-foreground/70 hover:text-primary">
+            {navLinks.map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                className={({ isActive }) =>
+                  `block py-3 text-sm transition-colors ${isActive ? "text-primary" : "text-foreground/70 hover:text-primary"}`
+                }
+              >
                 {l.label}
-              </Link>
+              </NavLink>
             ))}
             {user?.role === 'ADMIN' && (
-              <Link to="/admin" className="block py-3 text-sm text-foreground/70 hover:text-primary">
+              <Link to={ADMIN_PATH} className="block py-3 text-sm text-foreground/70 hover:text-primary">
                 Admin
               </Link>
             )}

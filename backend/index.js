@@ -170,6 +170,7 @@ const requireRole = (allowedRoles) => (req, res, next) => {
 };
 
 const getManagerRoleFilter = (user) => user.role === 'ADMIN' ? {} : { assignedManagerId: user.id };
+const getTaskRoleFilter = (user) => user.role === 'ADMIN' ? {} : { managerId: user.id };
 
 const DEFAULT_WORK_START_HOUR = Number(process.env.WORK_START_HOUR || 9);
 const DEFAULT_WORK_END_HOUR = Number(process.env.WORK_END_HOUR || 18);
@@ -244,6 +245,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   phone: z.string().min(7).optional(),
+  invite: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -258,9 +260,10 @@ const refreshSchema = z.object({
 const consultationSchema = z
   .object({
     email: z.string().email(),
-    phone: z.string().min(7),
+    phone: z.string().min(3).max(100).optional().nullable(),
     firstName: z.string().min(1),
     lastName: z.string().optional().nullable(),
+    preferredContactMethod: z.enum(['PHONE', 'TELEGRAM', 'EMAIL']).default('PHONE'),
     description: z.string().max(2000).optional().nullable(),
     serviceId: z.string().optional().nullable(),
     consultationType: z.enum(['FREE', 'PAID']).default('FREE'),
@@ -281,6 +284,14 @@ const consultationSchema = z
         });
       }
     }
+
+    if ((data.preferredContactMethod === 'PHONE' || data.preferredContactMethod === 'TELEGRAM') && !data.phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['phone'],
+        message: 'Phone or Telegram contact is required for selected communication method',
+      });
+    }
   });
 
 const consultationPatchSchema = z.object({
@@ -300,6 +311,121 @@ const reviewSchema = z.object({
   text: z.string().min(10).max(2000),
   rating: z.coerce.number().int().min(1).max(5).default(5),
 });
+
+const workerInviteSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['MANAGER', 'CLIENT']).default('MANAGER'),
+});
+
+const workerCreateSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  password: z.string().min(8).optional(),
+  role: z.enum(['MANAGER', 'CLIENT']).default('MANAGER'),
+});
+
+const taskCreateSchema = z.object({
+  title: z.string().min(2).max(200),
+  description: z.string().max(2000).optional().nullable(),
+  managerId: z.string().min(1),
+  consultationId: z.string().optional().nullable(),
+  dueDate: z.string().optional().nullable(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
+  status: z.enum(['TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED']).default('TODO'),
+});
+
+const taskPatchSchema = z.object({
+  title: z.string().min(2).max(200).optional(),
+  description: z.string().max(2000).optional().nullable(),
+  managerId: z.string().min(1).optional(),
+  consultationId: z.string().optional().nullable(),
+  dueDate: z.string().optional().nullable(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
+  status: z.enum(['TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED']).optional(),
+});
+
+const blogPostCreateSchema = z.object({
+  title: z.string().min(3).max(200),
+  slug: z.string().min(3).max(200).optional(),
+  excerpt: z.string().max(400).optional().nullable(),
+  content: z.string().min(20).max(20000),
+  coverImage: z.string().url().optional().nullable(),
+  category: z.string().max(120).optional().nullable(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).default('DRAFT'),
+  publishedAt: z.string().optional().nullable(),
+});
+
+const blogPostPatchSchema = z.object({
+  title: z.string().min(3).max(200).optional(),
+  slug: z.string().min(3).max(200).optional(),
+  excerpt: z.string().max(400).optional().nullable(),
+  content: z.string().min(20).max(20000).optional(),
+  coverImage: z.string().url().optional().nullable(),
+  category: z.string().max(120).optional().nullable(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
+  publishedAt: z.string().optional().nullable(),
+});
+
+const slugify = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .normalize('NFKD')
+    .trim()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 180);
+
+const resolveUniqueBlogSlug = async (rawValue, excludeId = null) => {
+  const base = slugify(rawValue) || `post-${Date.now()}`;
+  let candidate = base;
+  let iteration = 1;
+
+  while (true) {
+    const existing = await prisma.blogPost.findFirst({
+      where: {
+        slug: candidate,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!existing) return candidate;
+    iteration += 1;
+    candidate = `${base}-${iteration}`.slice(0, 190);
+  }
+};
+
+const visitSchema = z.object({
+  visitorId: z.string().min(6).max(120).optional(),
+  path: z.string().max(500).optional(),
+  referrer: z.string().max(500).optional(),
+  title: z.string().max(200).optional(),
+});
+
+const escapeCsv = (value) => {
+  if (value == null) return '';
+  const raw = String(value);
+  if (/[,"\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+  return raw;
+};
+
+const buildGoogleCalendarLink = ({ title, description, startDate, endDate, location = '' }) => {
+  if (!startDate || !endDate) return null;
+  const fmt = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title || 'Consultation',
+    details: description || '',
+    location,
+    dates: `${fmt(startDate)}/${fmt(endDate)}`,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+};
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -357,18 +483,129 @@ app.get('/api/apps/public/prod/public-settings/by-id/:appId', (req, res) => {
   });
 });
 
+app.get('/api/blog/posts', asyncHandler(async (req, res) => {
+  const { limit = 30 } = req.query;
+  const posts = await prisma.blogPost.findMany({
+    where: { status: 'PUBLISHED' },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      excerpt: true,
+      content: true,
+      coverImage: true,
+      category: true,
+      tags: true,
+      publishedAt: true,
+      createdAt: true,
+      author: { select: pickUserFields },
+    },
+    orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+    take: Math.min(Number(limit) || 30, 100),
+  });
+
+  const normalized = posts.map((post) => ({
+    ...post,
+    tags: post.tags ? String(post.tags).split(',').map((item) => item.trim()).filter(Boolean) : [],
+  }));
+  res.json(normalized);
+}));
+
+app.get('/api/blog/posts/:slug', asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+  const post = await prisma.blogPost.findFirst({
+    where: {
+      slug,
+      status: 'PUBLISHED',
+    },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      excerpt: true,
+      content: true,
+      coverImage: true,
+      category: true,
+      tags: true,
+      publishedAt: true,
+      createdAt: true,
+      author: { select: pickUserFields },
+    },
+  });
+  if (!post) throw new AppError(404, 'Post not found');
+
+  res.json({
+    ...post,
+    tags: post.tags ? String(post.tags).split(',').map((item) => item.trim()).filter(Boolean) : [],
+  });
+}));
+
+app.post('/api/analytics/visit', validateBody(visitSchema), asyncHandler(async (req, res) => {
+  const userAgent = String(req.headers['user-agent'] || '').slice(0, 200);
+  const fallbackVisitorId = `${String(req.ip || 'unknown-ip').slice(0, 40)}:${userAgent.slice(0, 40)}`;
+  const visitorId = String(req.body.visitorId || fallbackVisitorId).trim().slice(0, 120);
+
+  const now = new Date();
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(now);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  const alreadyTracked = await prisma.auditLog.findFirst({
+    where: {
+      entityType: 'SiteVisit',
+      action: 'VISIT',
+      entityId: visitorId,
+      createdAt: { gte: dayStart, lte: dayEnd },
+    },
+    select: { id: true },
+  });
+
+  if (alreadyTracked) {
+    return res.json({ tracked: false, reason: 'already-tracked-today' });
+  }
+
+  await logAudit({
+    entityType: 'SiteVisit',
+    entityId: visitorId,
+    action: 'VISIT',
+    metadata: {
+      path: req.body.path || null,
+      referrer: req.body.referrer || null,
+      title: req.body.title || null,
+      ip: req.ip,
+      userAgent,
+    },
+  });
+
+  res.status(201).json({ tracked: true });
+}));
+
 // ============ AUTH ENDPOINTS ============
 
 // Register (create new user)
 app.post('/api/auth/register', authLimiter, validateBody(registerSchema), asyncHandler(async (req, res) => {
-  const { email, password, firstName, lastName, phone } = req.body;
+  const { email, password, firstName, lastName, phone, invite } = req.body;
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+  let role = 'CLIENT';
+  if (invite) {
+    try {
+      const payload = jwt.verify(invite, JWT_SECRET);
+      if (payload?.type === 'worker_invite' && payload?.email?.toLowerCase?.() === email.toLowerCase()) {
+        role = payload.role === 'MANAGER' ? 'MANAGER' : 'CLIENT';
+      }
+    } catch {
+      throw new AppError(400, 'Invalid or expired invite link');
+    }
+  }
 
   try {
     const user = await prisma.user.create({
       data: {
         email,
         password: passwordHash,
+        role,
         firstName: firstName || null,
         lastName: lastName || null,
         phone: phone || null,
@@ -468,6 +705,7 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
     phone,
     firstName,
     lastName,
+    preferredContactMethod,
     description,
     serviceId,
     consultationType,
@@ -536,10 +774,12 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
   const consultation = await prisma.consultation.create({
     data: {
       email,
-      phone,
+      phone: phone || null,
       firstName,
       lastName: lastName || null,
       description: description || null,
+      preferredContactMethod,
+      googleMeetLink: 'https://meet.google.com/new',
       serviceId: consultationType === 'PAID' ? serviceId || null : null,
       consultationType,
       isPaid: consultationType === 'PAID',
@@ -566,6 +806,7 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
       serviceId,
       preferredDateTime,
       estimatedDuration: effectiveDuration,
+      preferredContactMethod,
     },
   });
 
@@ -578,6 +819,8 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
       firstName,
       preferredDateTime,
       consultationType,
+      preferredContactMethod,
+      googleMeetLink: consultation.googleMeetLink,
     },
   });
 
@@ -590,10 +833,12 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
       consultationId: consultation.id,
       firstName,
       phone,
+      preferredContactMethod,
       consultationType,
       serviceName,
       serviceCategory,
       preferredDateTime,
+      googleMeetLink: consultation.googleMeetLink,
     },
   });
 
@@ -671,6 +916,12 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
     const before = await prisma.consultation.findUnique({ where: { id } });
     if (!before) throw new AppError(404, 'Consultation not found');
 
+    const nextAssignedManagerId = assignedManagerId === null ? null : (assignedManagerId || before.assignedManagerId || null);
+
+    if (status === 'CONFIRMED' && !nextAssignedManagerId) {
+      throw new AppError(400, 'Select a manager before confirming consultation');
+    }
+
     const consultation = await prisma.consultation.update({
       where: { id },
       data: {
@@ -679,8 +930,14 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
         assignedManagerId: assignedManagerId === null ? null : assignedManagerId || undefined,
         internalNotes: internalNotes === null ? null : internalNotes || undefined,
         updatedById: req.user.id,
+        confirmedAt: status === 'CONFIRMED' ? (before.confirmedAt || new Date()) : undefined,
+        confirmedById: status === 'CONFIRMED' ? req.user.id : undefined,
       },
-      include: { service: true },
+      include: {
+        service: true,
+        assignedManager: { select: pickUserFields },
+        confirmedBy: { select: pickUserFields },
+      },
     });
 
     await logAudit({
@@ -691,7 +948,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
       action: 'UPDATE',
       beforeState: before,
       afterState: consultation,
-      metadata: { status, scheduledAt, assignedManagerId },
+      metadata: { status, scheduledAt, assignedManagerId: nextAssignedManagerId },
     });
 
     if (status && status !== before.status) {
@@ -701,6 +958,43 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
         type: 'consultation.status.changed.client',
         recipient: consultation.email,
         payload: { status, consultationId: consultation.id },
+      });
+    }
+
+    if (nextAssignedManagerId && consultation.assignedManager) {
+      const startAt = consultation.preferredDateTime || consultation.scheduledAt;
+      const endAt = startAt
+        ? addMinutes(new Date(startAt), Number(consultation.estimatedDuration || 15))
+        : null;
+      const googleCalendarLink = buildGoogleCalendarLink({
+        title: `Консультація: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+        description: [
+          `Клієнт: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+          `Email: ${consultation.email}`,
+          `Телефон: ${consultation.phone || '—'}`,
+          `Канал зв'язку: ${consultation.preferredContactMethod}`,
+          `Тип: ${consultation.consultationType}`,
+          `Послуга: ${consultation.serviceName || consultation.service?.name || 'Безкоштовна консультація'}`,
+          `Нотатки: ${consultation.description || '—'}`,
+        ].join('\n'),
+        startDate: startAt,
+        endDate: endAt,
+        location: 'Online',
+      });
+
+      await queueNotification({
+        consultationId: consultation.id,
+        userId: consultation.assignedManager.id,
+        channel: 'email',
+        type: 'consultation.assigned.manager',
+        recipient: consultation.assignedManager.email,
+        payload: {
+          consultationId: consultation.id,
+          managerId: consultation.assignedManager.id,
+          googleCalendarLink,
+          googleMeetLink: consultation.googleMeetLink || 'https://meet.google.com/new',
+          assignedAt: new Date().toISOString(),
+        },
       });
     }
 
@@ -741,6 +1035,7 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
       service: true,
       assignedManager: { select: pickUserFields },
       createdBy: { select: pickUserFields },
+      confirmedBy: { select: pickUserFields },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -766,6 +1061,106 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
   res.json(filtered);
 }));
 
+app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const where = getManagerRoleFilter(req.user);
+  const consultations = await prisma.consultation.findMany({
+    where,
+    include: {
+      service: true,
+      assignedManager: { select: pickUserFields },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const header = [
+    'id',
+    'createdAt',
+    'preferredDateTime',
+    'status',
+    'consultationType',
+    'firstName',
+    'lastName',
+    'email',
+    'phone',
+    'serviceCategory',
+    'serviceName',
+    'servicePriceText',
+    'preferredContactMethod',
+    'googleMeetLink',
+    'managerEmail',
+    'managerName',
+    'managerState',
+    'description',
+  ];
+  const rows = consultations.map((item) => {
+    const managerName = item.assignedManager
+      ? `${item.assignedManager.firstName || ''} ${item.assignedManager.lastName || ''}`.trim()
+      : '';
+    return [
+      item.id,
+      item.createdAt?.toISOString?.() || '',
+      item.preferredDateTime?.toISOString?.() || '',
+      item.status,
+      item.consultationType,
+      item.firstName,
+      item.lastName || '',
+      item.email,
+      item.phone || '',
+      item.serviceCategory || item.service?.category || '',
+      item.serviceName || item.service?.name || '',
+      item.servicePriceText || '',
+      item.preferredContactMethod || '',
+      item.googleMeetLink || '',
+      item.assignedManager?.email || '',
+      managerName,
+      item.assignedManagerId ? 'Закріплено' : 'На розподіленні',
+      item.description || '',
+    ];
+  });
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => escapeCsv(cell)).join(','))
+    .join('\n');
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="clients-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(`\uFEFF${csv}`);
+}));
+
+app.post('/api/admin/workers/invite', authMiddleware, requireRole(['ADMIN']), validateBody(workerInviteSchema), asyncHandler(async (req, res) => {
+  const { email, role } = req.body;
+  const inviteToken = jwt.sign(
+    { email, role, type: 'worker_invite', by: req.user.id },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  const frontendBase = (allowedOrigins[0] || 'http://localhost:5173').replace(/\/$/, '');
+  const inviteLink = `${frontendBase}/register?invite=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
+
+  await queueNotification({
+    channel: 'email',
+    type: 'worker.invite',
+    recipient: email,
+    payload: {
+      role,
+      inviteLink,
+      invitedBy: req.user.email,
+      expiresIn: '7d',
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    entityType: 'UserInvite',
+    entityId: email,
+    action: 'CREATE_WORKER_INVITE',
+    afterState: { email, role },
+    metadata: { inviteLink },
+  });
+
+  res.status(201).json({ email, role, inviteLink, expiresIn: '7d' });
+}));
+
 app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
   const where = getManagerRoleFilter(req.user);
   const consultations = await prisma.consultation.findMany({
@@ -776,23 +1171,163 @@ app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER']), a
       status: true,
       preferredDateTime: true,
       createdAt: true,
+      email: true,
+      assignedManagerId: true,
+      serviceName: true,
+      service: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
+
+  const analyticsWindowStart = new Date();
+  analyticsWindowStart.setDate(analyticsWindowStart.getDate() - 30);
+  analyticsWindowStart.setHours(0, 0, 0, 0);
+
+  const siteVisits = await prisma.auditLog.findMany({
+    where: {
+      entityType: 'SiteVisit',
+      action: 'VISIT',
+      createdAt: { gte: analyticsWindowStart },
+    },
+    select: {
+      entityId: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const taskWhere = getTaskRoleFilter(req.user);
+  const tasks = await prisma.task.findMany({
+    where: taskWhere,
+    select: { id: true, status: true },
+  });
+
+  const workersCount = req.user.role === 'ADMIN'
+    ? await prisma.user.count({ where: { role: 'MANAGER' } })
+    : 1;
 
   const total = consultations.length;
   const freeCount = consultations.filter((c) => c.consultationType === 'FREE').length;
   const paidCount = consultations.filter((c) => c.consultationType === 'PAID').length;
+  const uniqueClients = new Set(consultations.map((c) => (c.email || '').toLowerCase()).filter(Boolean));
   const statusCounts = consultations.reduce((acc, item) => {
     acc[item.status] = (acc[item.status] || 0) + 1;
     return acc;
   }, {});
+  const taskStatusCounts = tasks.reduce((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const todayBookings = consultations.filter((c) => {
+    const createdAt = new Date(c.createdAt);
+    return createdAt >= todayStart && createdAt <= todayEnd;
+  }).length;
+
+  const todayPaidBookings = consultations.filter((c) => {
+    const createdAt = new Date(c.createdAt);
+    return c.consultationType === 'PAID' && createdAt >= todayStart && createdAt <= todayEnd;
+  }).length;
+
+  const todayVisitSet = new Set(
+    siteVisits
+      .filter((v) => {
+        const createdAt = new Date(v.createdAt);
+        return createdAt >= todayStart && createdAt <= todayEnd;
+      })
+      .map((v) => v.entityId || 'unknown')
+  );
+
+  const dateKey = (value) => {
+    const d = new Date(value);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const dayLabel = (isoDate) => {
+    const d = new Date(isoDate);
+    return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+  };
+
+  const rangeDays = Array.from({ length: 7 }).map((_, idx) => {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - (6 - idx));
+    return d;
+  });
+
+  const bookingsByDayMap = consultations.reduce((acc, item) => {
+    const key = dateKey(item.createdAt);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const visitsByDaySetMap = siteVisits.reduce((acc, item) => {
+    const key = dateKey(item.createdAt);
+    if (!acc[key]) acc[key] = new Set();
+    acc[key].add(item.entityId || 'unknown');
+    return acc;
+  }, {});
+
+  const bookingsVsVisits7d = rangeDays.map((day) => {
+    const key = dateKey(day);
+    return {
+      day: dayLabel(day),
+      bookings: bookingsByDayMap[key] || 0,
+      visits: visitsByDaySetMap[key]?.size || 0,
+    };
+  });
+
+  const serviceCountMap = consultations.reduce((acc, item) => {
+    const serviceName = item.serviceName || item.service?.name || 'Безкоштовна консультація';
+    acc[serviceName] = (acc[serviceName] || 0) + 1;
+    return acc;
+  }, {});
+
+  const popularServices = Object.entries(serviceCountMap)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 7);
+
+  const conversionRateToday = todayVisitSet.size
+    ? Number(((todayBookings / todayVisitSet.size) * 100).toFixed(1))
+    : 0;
 
   res.json({
     total,
     freeCount,
     paidCount,
     statusCounts,
+    workersCount,
+    totalClients: uniqueClients.size,
+    unassignedCount: consultations.filter((c) => !c.assignedManagerId).length,
+    tasksTotal: tasks.length,
+    tasksOpen: tasks.filter((t) => ['TODO', 'IN_PROGRESS'].includes(t.status)).length,
+    taskStatusCounts,
     upcoming: consultations.filter((c) => c.preferredDateTime && new Date(c.preferredDateTime) > new Date()).length,
+    analytics: {
+      todayVisits: todayVisitSet.size,
+      todayBookings,
+      todayPaidBookings,
+      conversionRateToday,
+      popularServices,
+      bookingsVsVisits7d,
+      consultationTypeShare: [
+        { name: 'FREE', value: freeCount },
+        { name: 'PAID', value: paidCount },
+      ],
+    },
   });
 }));
 
@@ -826,6 +1361,277 @@ app.get('/api/admin/notifications', authMiddleware, requireRole(['ADMIN', 'MANAG
     ...item,
     payload: parseJsonSafely(item.payload),
   })));
+}));
+
+app.get('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
+  const workers = await prisma.user.findMany({
+    where: { role: 'MANAGER' },
+    select: {
+      ...pickUserFields,
+      _count: {
+        select: {
+          assignedConsultations: true,
+          assignedTasks: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(workers);
+}));
+
+app.post('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), validateBody(workerCreateSchema), asyncHandler(async (req, res) => {
+  const { email, firstName, lastName, phone, password, role } = req.body;
+  const tempPassword = password || 'Temp123456!';
+  const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
+
+  const worker = await prisma.user.create({
+    data: {
+      email,
+      password: passwordHash,
+      role,
+      firstName,
+      lastName: lastName || null,
+      phone: phone || null,
+    },
+    select: pickUserFields,
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    entityType: 'User',
+    entityId: worker.id,
+    action: 'CREATE_WORKER',
+    afterState: worker,
+  });
+
+  res.status(201).json({ ...worker, generatedPassword: password ? null : tempPassword });
+}));
+
+app.get('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
+  const posts = await prisma.blogPost.findMany({
+    include: {
+      author: { select: pickUserFields },
+    },
+    orderBy: [{ createdAt: 'desc' }],
+    take: 300,
+  });
+
+  res.json(posts.map((post) => ({
+    ...post,
+    tags: post.tags ? String(post.tags).split(',').map((item) => item.trim()).filter(Boolean) : [],
+  })));
+}));
+
+app.post('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), validateBody(blogPostCreateSchema), asyncHandler(async (req, res) => {
+  const { title, slug, excerpt, content, coverImage, category, tags, status, publishedAt } = req.body;
+  const normalizedSlug = await resolveUniqueBlogSlug(slug || title);
+
+  const post = await prisma.blogPost.create({
+    data: {
+      title,
+      slug: normalizedSlug,
+      excerpt: excerpt || null,
+      content,
+      coverImage: coverImage || null,
+      category: category || null,
+      tags: Array.isArray(tags) ? tags.join(',') : null,
+      status,
+      publishedAt: status === 'PUBLISHED'
+        ? (publishedAt ? new Date(publishedAt) : new Date())
+        : null,
+      authorId: req.user.id,
+    },
+    include: {
+      author: { select: pickUserFields },
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    entityType: 'BlogPost',
+    entityId: post.id,
+    action: 'CREATE_BLOG_POST',
+    afterState: post,
+  });
+
+  res.status(201).json({
+    ...post,
+    tags: post.tags ? String(post.tags).split(',').map((item) => item.trim()).filter(Boolean) : [],
+  });
+}));
+
+app.patch('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), validateBody(blogPostPatchSchema), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const before = await prisma.blogPost.findUnique({ where: { id } });
+  if (!before) throw new AppError(404, 'Blog post not found');
+
+  const { title, slug, excerpt, content, coverImage, category, tags, status, publishedAt } = req.body;
+  const nextSlug = slug
+    ? await resolveUniqueBlogSlug(slug, id)
+    : title
+      ? await resolveUniqueBlogSlug(title, id)
+      : undefined;
+
+  const post = await prisma.blogPost.update({
+    where: { id },
+    data: {
+      title: title || undefined,
+      slug: nextSlug || undefined,
+      excerpt: excerpt === null ? null : excerpt || undefined,
+      content: content || undefined,
+      coverImage: coverImage === null ? null : coverImage || undefined,
+      category: category === null ? null : category || undefined,
+      tags: Array.isArray(tags) ? tags.join(',') : undefined,
+      status: status || undefined,
+      publishedAt: publishedAt === null
+        ? null
+        : publishedAt
+          ? new Date(publishedAt)
+          : status === 'PUBLISHED' && !before.publishedAt
+            ? new Date()
+            : undefined,
+    },
+    include: {
+      author: { select: pickUserFields },
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    entityType: 'BlogPost',
+    entityId: post.id,
+    action: 'UPDATE_BLOG_POST',
+    beforeState: before,
+    afterState: post,
+  });
+
+  res.json({
+    ...post,
+    tags: post.tags ? String(post.tags).split(',').map((item) => item.trim()).filter(Boolean) : [],
+  });
+}));
+
+app.delete('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const before = await prisma.blogPost.findUnique({ where: { id } });
+  if (!before) throw new AppError(404, 'Blog post not found');
+
+  await prisma.blogPost.delete({ where: { id } });
+  await logAudit({
+    actorUserId: req.user.id,
+    entityType: 'BlogPost',
+    entityId: id,
+    action: 'DELETE_BLOG_POST',
+    beforeState: before,
+  });
+
+  res.status(204).end();
+}));
+
+app.get('/api/admin/tasks', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const { status, managerId } = req.query;
+  const where = {
+    ...getTaskRoleFilter(req.user),
+  };
+  if (status) where.status = status;
+  if (managerId && req.user.role === 'ADMIN') where.managerId = String(managerId);
+
+  const tasks = await prisma.task.findMany({
+    where,
+    include: {
+      manager: { select: pickUserFields },
+      consultation: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          consultationType: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+  });
+  res.json(tasks);
+}));
+
+app.post('/api/admin/tasks', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(taskCreateSchema), asyncHandler(async (req, res) => {
+  const { title, description, managerId, consultationId, dueDate, priority, status } = req.body;
+  if (req.user.role !== 'ADMIN' && req.user.id !== managerId) {
+    throw new AppError(403, 'Managers can create tasks only for themselves');
+  }
+
+  const task = await prisma.task.create({
+    data: {
+      title,
+      description: description || null,
+      managerId,
+      consultationId: consultationId || null,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      priority,
+      status,
+    },
+    include: {
+      manager: { select: pickUserFields },
+      consultation: { select: { id: true, firstName: true, lastName: true, email: true } },
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: task.consultationId || null,
+    entityType: 'Task',
+    entityId: task.id,
+    action: 'CREATE_TASK',
+    afterState: task,
+  });
+
+  res.status(201).json(task);
+}));
+
+app.patch('/api/admin/tasks/:id', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(taskPatchSchema), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const before = await prisma.task.findUnique({ where: { id } });
+  if (!before) throw new AppError(404, 'Task not found');
+  if (req.user.role !== 'ADMIN' && before.managerId !== req.user.id) {
+    throw new AppError(403, 'Forbidden');
+  }
+
+  const { title, description, managerId, consultationId, dueDate, priority, status } = req.body;
+  if (req.user.role !== 'ADMIN' && managerId && managerId !== req.user.id) {
+    throw new AppError(403, 'Managers cannot reassign task owner');
+  }
+
+  const task = await prisma.task.update({
+    where: { id },
+    data: {
+      title: title || undefined,
+      description: description === null ? null : description || undefined,
+      managerId: managerId || undefined,
+      consultationId: consultationId === null ? null : consultationId || undefined,
+      dueDate: dueDate === null ? null : dueDate ? new Date(dueDate) : undefined,
+      priority: priority || undefined,
+      status: status || undefined,
+    },
+    include: {
+      manager: { select: pickUserFields },
+      consultation: { select: { id: true, firstName: true, lastName: true, email: true } },
+    },
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: task.consultationId || null,
+    entityType: 'Task',
+    entityId: task.id,
+    action: 'UPDATE_TASK',
+    beforeState: before,
+    afterState: task,
+  });
+
+  res.json(task);
 }));
 
 // ============ ORDERS ENDPOINTS (для платних послуг) ============

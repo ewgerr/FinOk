@@ -25,6 +25,9 @@ model User {
   assignedConsultations Consultation[] @relation("ConsultationAssignedManager")
   createdConsultations Consultation[] @relation("ConsultationCreatedBy")
   updatedConsultations Consultation[] @relation("ConsultationUpdatedBy")
+  confirmedConsultations Consultation[] @relation("ConsultationConfirmedBy")
+  assignedTasks Task[] @relation("TaskAssignedManager")
+  blogPosts     BlogPost[]
   orders        Order[]
   auditLogs     AuditLog[]
   notifications NotificationLog[]
@@ -77,9 +80,14 @@ model Consultation {
   createdBy       User? @relation("ConsultationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedById     String?
   updatedBy       User? @relation("ConsultationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  confirmedById   String?
+  confirmedBy     User? @relation("ConsultationConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
   internalNotes   String?
   
   description   String?
+  preferredContactMethod CommunicationChannel @default(PHONE)
+  googleMeetLink String?
+  confirmedAt   DateTime?
   preferredDateTime DateTime?
   status        ConsultationStatus @default(PENDING) // PENDING, CONFIRMED, COMPLETED, CANCELLED
   
@@ -92,6 +100,7 @@ model Consultation {
   orderId       String?
   notifications NotificationLog[]
   auditLogs     AuditLog[]
+  tasks         Task[]
 
   @@map("consultations")
 }
@@ -150,6 +159,42 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model Task {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?
+  status         TaskStatus   @default(TODO)
+  priority       TaskPriority @default(MEDIUM)
+  dueDate        DateTime?
+  managerId      String
+  manager        User         @relation("TaskAssignedManager", fields: [managerId], references: [id], onDelete: Cascade)
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("tasks")
+}
+
+model BlogPost {
+  id          String            @id @default(cuid())
+  title       String
+  slug        String            @unique
+  excerpt     String?
+  content     String
+  coverImage  String?
+  category    String?
+  tags        String?
+  status      BlogPostStatus    @default(DRAFT)
+  publishedAt DateTime?
+  authorId    String?
+  author      User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@map("blog_posts")
+}
+
 // Enum для типу консультації
 enum ConsultationType {
   FREE
@@ -189,4 +234,29 @@ enum OrderStatus {
   PAID
   COMPLETED
   CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CommunicationChannel {
+  PHONE
+  TELEGRAM
+  EMAIL
+}
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }

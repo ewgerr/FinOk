@@ -15,6 +15,21 @@ async function requestJson(path, opts = {}) {
   return request(path, opts);
 }
 
+async function requestBlob(path, opts = {}) {
+  const headers = opts.headers || {};
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(path, { ...opts, headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const err = new Error(res.statusText || 'Request failed');
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+  return res.blob();
+}
+
 async function request(path, opts = {}) {
   const headers = opts.headers || {};
   const token = getToken();
@@ -32,6 +47,17 @@ async function request(path, opts = {}) {
 }
 
 export const apiClient = {
+  blog: {
+    list: async (params = {}) => {
+      const search = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') search.set(key, value);
+      });
+      return requestJson(`/api/blog/posts${search.toString() ? `?${search.toString()}` : ''}`);
+    },
+    getBySlug: async (slug) => requestJson(`/api/blog/posts/${encodeURIComponent(slug)}`),
+  },
+
   auth: {
     setToken: (t) => setToken(t),
     logout: () => setToken(null),
@@ -71,6 +97,17 @@ export const apiClient = {
   },
 
   admin: {
+    blog: {
+      list: async () => requestJson('/api/admin/blog/posts'),
+      create: async (payload) => request('/api/admin/blog/posts', { method: 'POST', body: JSON.stringify(payload) }),
+      update: async (id, payload) => request(`/api/admin/blog/posts/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+      remove: async (id) => request(`/api/admin/blog/posts/${id}`, { method: 'DELETE' }),
+    },
+    workers: {
+      list: async () => requestJson('/api/admin/workers'),
+      create: async (payload) => request('/api/admin/workers', { method: 'POST', body: JSON.stringify(payload) }),
+      invite: async (payload) => request('/api/admin/workers/invite', { method: 'POST', body: JSON.stringify(payload) }),
+    },
     consultations: {
       list: async (params = {}) => {
         const search = new URLSearchParams();
@@ -81,7 +118,19 @@ export const apiClient = {
       },
       update: async (id, payload) => request(`/api/entities/Consultation/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
     },
+    tasks: {
+      list: async (params = {}) => {
+        const search = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') search.set(key, value);
+        });
+        return requestJson(`/api/admin/tasks${search.toString() ? `?${search.toString()}` : ''}`);
+      },
+      create: async (payload) => request('/api/admin/tasks', { method: 'POST', body: JSON.stringify(payload) }),
+      update: async (id, payload) => request(`/api/admin/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    },
     stats: async () => requestJson('/api/admin/stats'),
+    exportClientsCsv: async () => requestBlob('/api/admin/consultations/export.csv', { headers: { Accept: 'text/csv' } }),
     notifications: async () => requestJson('/api/admin/notifications'),
     auditLogs: async () => requestJson('/api/admin/audit-logs'),
     reviews: {
