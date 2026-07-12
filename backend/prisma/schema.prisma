@@ -1,0 +1,179 @@
+// Prisma schema for FinOK backend
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// User/Client model
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  role          UserRole @default(CLIENT)
+  firstName     String?
+  lastName      String?
+  phone         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  consultations Consultation[]
+  assignedConsultations Consultation[] @relation("ConsultationAssignedManager")
+  createdConsultations Consultation[] @relation("ConsultationCreatedBy")
+  updatedConsultations Consultation[] @relation("ConsultationUpdatedBy")
+  orders        Order[]
+  auditLogs     AuditLog[]
+  notifications NotificationLog[]
+
+  @@map("users")
+}
+
+// Service model (послуга з фіксованою вартістю)
+model Service {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  price         Float    // Вартість послуги
+  duration      Int?     // Тривалість у хвилинах
+  category      String?  // Категорія послуги
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  consultations Consultation[]
+  orders        Order[]
+
+  @@map("services")
+}
+
+// Consultation model (може бути безкоштовна або прив'язана до послуги)
+model Consultation {
+  id            String   @id @default(cuid())
+  userId        String?  // Nullable - анонімна консультація
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  serviceId     String?  // Nullable - якщо безкоштовна консультація
+  service       Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  
+  email         String
+  phone         String?
+  firstName     String
+  lastName      String?
+  
+  consultationType ConsultationType // "FREE" або "PAID"
+  isPaid          Boolean  @default(false)
+  estimatedDuration Int    @default(15) // У хвилинах
+  serviceCategory String?
+  serviceName     String?
+  servicePriceText String?
+  assignedManagerId String?
+  assignedManager   User? @relation("ConsultationAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  createdById     String?
+  createdBy       User? @relation("ConsultationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById     String?
+  updatedBy       User? @relation("ConsultationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  internalNotes   String?
+  
+  description   String?
+  preferredDateTime DateTime?
+  status        ConsultationStatus @default(PENDING) // PENDING, CONFIRMED, COMPLETED, CANCELLED
+  
+  scheduledAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderId       String?
+  notifications NotificationLog[]
+  auditLogs     AuditLog[]
+
+  @@map("consultations")
+}
+
+// Order model (замовлення на платну послугу)
+model Order {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  serviceId     String
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  
+  amount        Float    // Сума замовлення (копія ціни послуги на момент замовлення)
+  status        OrderStatus @default(PENDING) // PENDING, PAID, COMPLETED, CANCELLED
+  
+  consultations Consultation[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("orders")
+}
+
+model NotificationLog {
+  id             String   @id @default(cuid())
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  channel        String
+  type           String
+  recipient      String?
+  payload        String?
+  status         String   @default("queued")
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  @@map("notification_logs")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorUserId    String?
+  actorUser      User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  entityType     String
+  entityId       String?
+  action         String
+  beforeState    String?
+  afterState     String?
+  metadata       String?
+  createdAt      DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// Enum для типу консультації
+enum ConsultationType {
+  FREE
+  PAID
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  CLIENT
+}
+
+// Enum для статусу консультації
+enum ConsultationStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// Enum для статусу замовлення
+enum OrderStatus {
+  PENDING
+  PAID
+  COMPLETED
+  CANCELLED
+}

@@ -1,0 +1,25 @@
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth } from "@/lib/AuthContext";
+import AccessDenied from "@/components/AccessDenied";
+
+export default function AdminRoute() {
+  const { user, isAuthenticated, isLoadingAuth, authChecked, authError } = useAuth();
+
+  if (isLoadingAuth || !authChecked) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (authError || !isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role !== "ADMIN") {
+    return <AccessDenied />;
+  }
+
+  return <Outlet />;
+}

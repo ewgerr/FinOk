@@ -1,0 +1,30 @@
+{
+  "consultations": [
+    {
+      "id": "1783529372366",
+      "name": "ewqeqw",
+      "contact": "454654646",
+      "service_category": "ФОП",
+      "preferred_time": "ewqqweqw",
+      "consent": true,
+      "createdAt": "2026-07-08T16:49:32.366Z"
+    },
+    {
+      "id": "1783529891872",
+      "name": "sdasd",
+      "contact": "dasdasdas",
+      "service_category": "ТОВ",
+      "preferred_time": "sdadasda",
+      "consent": true,
+      "createdAt": "2026-07-08T16:58:11.872Z"
+    }
+  ],
+  "users": [],
+  "publicSettings": {
+    "id": "6a0f3d95a129fb21b5a871de",
+    "public_settings": {
+      "name": "ФінОк (локальний)",
+      "description": "Локальні публічні налаштування для розробки"
+    }
+  }
+}

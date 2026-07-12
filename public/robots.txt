@@ -1,0 +1,24 @@
+# Robots file for FinOk
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /*.json$
+
+# Google Search Console
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+# Bing Search Engine
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+# Yandex Search Engine
+User-agent: Yandex
+Allow: /
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://finok.com.ua/sitemap.xml

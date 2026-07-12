@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install frontend deps
+        run: npm install
+      - name: Lint frontend
+        run: npm run lint
+      - name: Build frontend
+        run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install backend deps
+        run: npm install
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Push Prisma schema
+        env:
+          DATABASE_URL: file:./dev.db
+          JWT_SECRET: ci-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          CORS_ORIGIN: http://localhost:5173
+        run: npm run db:push
+      - name: Run backend tests
+        env:
+          DATABASE_URL: file:./dev.db
+          JWT_SECRET: ci-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          CORS_ORIGIN: http://localhost:5173
+        run: npm test

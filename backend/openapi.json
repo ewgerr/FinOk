@@ -1,0 +1,133 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FinOK Backend API",
+    "version": "1.0.0",
+    "description": "API for bookings, consultations, auth, admin workflows and availability slots."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "phone": { "type": "string" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "ConsultationCreate": {
+        "type": "object",
+        "required": ["email", "phone", "firstName", "preferredDateTime"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "consultationType": { "type": "string", "enum": ["FREE", "PAID"] },
+          "serviceId": { "type": ["string", "null"] },
+          "serviceCategory": { "type": ["string", "null"] },
+          "serviceName": { "type": ["string", "null"] },
+          "servicePriceText": { "type": ["string", "null"] },
+          "preferredDateTime": { "type": "string", "format": "date-time" },
+          "estimatedDuration": { "type": ["integer", "null"], "minimum": 1 }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "summary": "Register user",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login user",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "summary": "Current user",
+        "responses": { "200": { "description": "OK" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/api/entities/Service": {
+      "get": { "summary": "List services", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/entities/Consultation": {
+      "post": {
+        "summary": "Create consultation",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConsultationCreate" } } } },
+        "responses": { "201": { "description": "Created" }, "400": { "description": "Validation error" }, "409": { "description": "Slot already booked" } }
+      },
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "summary": "List consultations",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/entities/Consultation/available-slots": {
+      "get": {
+        "summary": "Get available slots",
+        "parameters": [
+          { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "duration", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/admin/stats": {
+      "get": { "security": [{ "bearerAuth": [] }], "summary": "Dashboard stats", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/admin/consultations": {
+      "get": { "security": [{ "bearerAuth": [] }], "summary": "Admin consultations list", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/admin/notifications": {
+      "get": { "security": [{ "bearerAuth": [] }], "summary": "Notification queue history", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/admin/audit-logs": {
+      "get": { "security": [{ "bearerAuth": [] }], "summary": "Audit trail", "responses": { "200": { "description": "OK" } } }
+    }
+  }
+}
