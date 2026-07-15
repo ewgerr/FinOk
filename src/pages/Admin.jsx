@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/api/backendClient";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +11,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
-import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send } from "lucide-react";
+import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
+import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound } from "lucide-react";
 
 const statusOptions = ["", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const typeOptions = ["", "FREE", "PAID"];
+const confirmationOptions = ["", "CONFIRMED", "UNCONFIRMED"];
 const taskStatusOptions = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"];
 const taskPriorityOptions = ["LOW", "MEDIUM", "HIGH"];
 
@@ -41,6 +43,41 @@ const contactMethodLabel = {
   PHONE: "Дзвінок",
   TELEGRAM: "Telegram",
   EMAIL: "Email",
+};
+
+const DEFAULT_PIPELINE_ORDER = { NEW: [], ASSIGNED: [], CLIENT: [], DONE: [] };
+
+const formatMoney = (value, currency = "UAH") => `${Number(value || 0).toLocaleString("uk-UA", { maximumFractionDigits: 2 })} ${currency}`;
+
+const formatStageTime = (value) => {
+  if (!value) return "—";
+  const from = new Date(value);
+  if (Number.isNaN(from.getTime())) return "—";
+  const diffMs = Math.max(Date.now() - from.getTime(), 0);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}д ${hours}г`;
+  if (hours > 0) return `${hours}г ${minutes}хв`;
+  return `${minutes}хв`;
+};
+
+const sortBySavedOrder = (items, orderedIds = []) => {
+  const indexMap = new Map(orderedIds.map((id, index) => [id, index]));
+  return [...items].sort((a, b) => {
+    const aIndex = indexMap.has(a.id) ? indexMap.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bIndex = indexMap.has(b.id) ? indexMap.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+};
+
+const stageLabel = (item) => {
+  if (item.status === "COMPLETED") return "Завершено";
+  if (item.status === "CONFIRMED") return "Клієнт";
+  if (item.assignedManagerId) return "Призначена консультація";
+  return "Нова";
 };
 
 const buildConfirmationDetails = (item) => [
@@ -84,7 +121,7 @@ function StatCard({ title, value, icon: Icon, subtitle }) {
 
 export default function Admin() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ consultationType: "", status: "", search: "" });
+  const [filters, setFilters] = useState({ consultationType: "", status: "", confirmationType: "", search: "" });
   const [workerForm, setWorkerForm] = useState({
     firstName: "",
     lastName: "",
@@ -113,6 +150,14 @@ export default function Admin() {
     status: "DRAFT",
     coverImage: "",
   });
+  const [noteDrafts, setNoteDrafts] = useState({});
+  const [selectedClientKey, setSelectedClientKey] = useState("");
+  const [pipelineManagerFilter, setPipelineManagerFilter] = useState("all");
+  const [pipelineDateFrom, setPipelineDateFrom] = useState("");
+  const [pipelineDateTo, setPipelineDateTo] = useState("");
+  const [pipelineServiceFilter, setPipelineServiceFilter] = useState("all");
+  const [pipelineOrder, setPipelineOrder] = useState(DEFAULT_PIPELINE_ORDER);
+  const [isPipelineOrderInitialized, setIsPipelineOrderInitialized] = useState(false);
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
@@ -125,6 +170,7 @@ export default function Admin() {
       apiClient.admin.consultations.list({
         consultationType: filters.consultationType,
         status: filters.status,
+        confirmationType: filters.confirmationType,
         search: filters.search,
       }),
   });
@@ -162,6 +208,21 @@ export default function Admin() {
   const blogPostsQuery = useQuery({
     queryKey: ["admin-blog-posts"],
     queryFn: () => apiClient.admin.blog.list(),
+  });
+
+  const paymentsQuery = useQuery({
+    queryKey: ["admin-payments"],
+    queryFn: () => apiClient.admin.payments.list(),
+  });
+
+  const paymentAnalyticsQuery = useQuery({
+    queryKey: ["admin-payments-analytics"],
+    queryFn: () => apiClient.admin.payments.analytics(),
+  });
+
+  const pipelinePreferencesQuery = useQuery({
+    queryKey: ["admin-pipeline-preferences"],
+    queryFn: () => apiClient.admin.pipeline.getPreferences(),
   });
 
   const reviewPatchMutation = useMutation({
@@ -216,6 +277,7 @@ export default function Admin() {
         queryClient.invalidateQueries({ queryKey: ["admin-stats"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-payments"] }),
       ]);
     },
   });
@@ -255,6 +317,25 @@ export default function Admin() {
     },
   });
 
+  const markPaidMutation = useMutation({
+    mutationFn: (consultationId) => apiClient.admin.payments.markPaid(consultationId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-payments-analytics"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations-feed"] }),
+      ]);
+    },
+  });
+
+  const savePipelinePreferencesMutation = useMutation({
+    mutationFn: (order) => apiClient.admin.pipeline.savePreferences(order),
+    onError: () => {
+      alert("Не вдалося зберегти порядок воронки.");
+    },
+  });
+
   const stats = statsQuery.data || {};
   const consultations = consultationsQuery.data || [];
   const consultationsFeed = consultationsFeedQuery.data || [];
@@ -264,7 +345,22 @@ export default function Admin() {
   const workers = workersQuery.data || [];
   const tasks = tasksQuery.data || [];
   const blogPosts = blogPostsQuery.data || [];
+  const payments = paymentsQuery.data || [];
+  const paymentAnalytics = paymentAnalyticsQuery.data || { overall: { averageCheck: 0, totalPaid: 0, paidOrdersCount: 0, paidClientsCount: 0 }, perClient: [] };
   const analytics = stats.analytics || {};
+
+  useEffect(() => {
+    if (isPipelineOrderInitialized) return;
+    const serverOrder = pipelinePreferencesQuery.data?.order;
+    if (!serverOrder) return;
+    setPipelineOrder({
+      NEW: Array.isArray(serverOrder.NEW) ? serverOrder.NEW : [],
+      ASSIGNED: Array.isArray(serverOrder.ASSIGNED) ? serverOrder.ASSIGNED : [],
+      CLIENT: Array.isArray(serverOrder.CLIENT) ? serverOrder.CLIENT : [],
+      DONE: Array.isArray(serverOrder.DONE) ? serverOrder.DONE : [],
+    });
+    setIsPipelineOrderInitialized(true);
+  }, [pipelinePreferencesQuery.data, isPipelineOrderInitialized]);
 
   const confirmedConsultations = useMemo(
     () => consultationsFeed.filter((item) => item.status === "CONFIRMED"),
@@ -286,6 +382,154 @@ export default function Admin() {
   const activeConsultations = useMemo(() => {
     return consultations.filter((item) => item.status !== "COMPLETED");
   }, [consultations]);
+
+  const clientCards = useMemo(() => {
+    const map = new Map();
+    for (const item of consultationsFeed) {
+      const key = (item.email || `${item.firstName}_${item.lastName || ""}`).toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          email: item.email,
+          fullName: `${item.firstName} ${item.lastName || ""}`.trim(),
+          phone: item.phone || "—",
+          preferredContactMethod: item.preferredContactMethod,
+          consultations: [],
+        });
+      }
+      map.get(key).consultations.push(item);
+    }
+    return Array.from(map.values())
+      .map((card) => ({
+        ...card,
+        consultations: [...card.consultations].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+      }))
+      .sort((a, b) => new Date(b.consultations[0]?.createdAt || 0) - new Date(a.consultations[0]?.createdAt || 0));
+  }, [consultationsFeed]);
+
+  const selectedClient = useMemo(() => {
+    if (!clientCards.length) return null;
+    return clientCards.find((c) => c.key === selectedClientKey) || clientCards[0];
+  }, [clientCards, selectedClientKey]);
+
+  const averageCheckByEmail = useMemo(() => {
+    const map = new Map();
+    for (const item of paymentAnalytics.perClient || []) {
+      map.set(String(item.email || "").toLowerCase(), Number(item.averageCheck || 0));
+    }
+    return map;
+  }, [paymentAnalytics.perClient]);
+
+  const pipelineServiceOptions = useMemo(() => {
+    const map = new Map();
+    consultationsFeed
+      .filter((item) => item.consultationType === "PAID")
+      .forEach((item) => {
+        if (item.serviceId) {
+          const label = item.serviceName || item.service?.name || "Платна консультація";
+          map.set(`id:${item.serviceId}`, label);
+          return;
+        }
+        const name = item.serviceName || item.service?.name;
+        if (name) {
+          map.set(`name:${name}`, name);
+        }
+      });
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, "uk"));
+  }, [consultationsFeed]);
+
+  const pipelineConsultations = useMemo(() => {
+    return consultationsFeed.filter((item) => {
+      if (pipelineManagerFilter === "unassigned" && item.assignedManagerId) return false;
+      if (pipelineManagerFilter !== "all" && pipelineManagerFilter !== "unassigned" && item.assignedManagerId !== pipelineManagerFilter) return false;
+
+      if (pipelineServiceFilter === "free" && item.consultationType !== "FREE") return false;
+      if (pipelineServiceFilter.startsWith("id:") && item.serviceId !== pipelineServiceFilter.slice(3)) return false;
+      if (pipelineServiceFilter.startsWith("name:")) {
+        const serviceName = item.serviceName || item.service?.name || "";
+        if (serviceName !== pipelineServiceFilter.slice(5)) return false;
+      }
+
+      const rawDate = item.preferredDateTime || item.createdAt;
+      if ((pipelineDateFrom || pipelineDateTo) && !rawDate) return false;
+
+      if (pipelineDateFrom) {
+        const from = new Date(`${pipelineDateFrom}T00:00:00`);
+        if (new Date(rawDate) < from) return false;
+      }
+      if (pipelineDateTo) {
+        const to = new Date(`${pipelineDateTo}T23:59:59.999`);
+        if (new Date(rawDate) > to) return false;
+      }
+
+      return true;
+    });
+  }, [consultationsFeed, pipelineManagerFilter, pipelineServiceFilter, pipelineDateFrom, pipelineDateTo]);
+
+  const funnelColumns = useMemo(() => {
+    const all = pipelineConsultations;
+    return {
+      NEW: sortBySavedOrder(all.filter((c) => !c.assignedManagerId && c.status === "PENDING"), pipelineOrder.NEW),
+      ASSIGNED: sortBySavedOrder(all.filter((c) => c.assignedManagerId && c.status === "PENDING"), pipelineOrder.ASSIGNED),
+      CLIENT: sortBySavedOrder(all.filter((c) => c.status === "CONFIRMED"), pipelineOrder.CLIENT),
+      DONE: sortBySavedOrder(all.filter((c) => c.status === "COMPLETED"), pipelineOrder.DONE),
+    };
+  }, [pipelineConsultations, pipelineOrder]);
+
+  const pipelineConversions = useMemo(() => {
+    const newCount = funnelColumns.NEW.length;
+    const assignedCount = funnelColumns.ASSIGNED.length;
+    const clientCount = funnelColumns.CLIENT.length;
+    const doneCount = funnelColumns.DONE.length;
+
+    const ratio = (next, prev) => (prev ? `${Math.round((next / prev) * 100)}%` : "0%");
+
+    return {
+      newCount,
+      assignedCount,
+      clientCount,
+      doneCount,
+      newToAssigned: ratio(assignedCount, newCount),
+      assignedToClient: ratio(clientCount, assignedCount),
+      clientToDone: ratio(doneCount, clientCount),
+    };
+  }, [funnelColumns]);
+
+  useEffect(() => {
+    const allIds = new Set(consultationsFeed.map((item) => item.id));
+    const nextOrder = {
+      NEW: (pipelineOrder.NEW || []).filter((id) => allIds.has(id)),
+      ASSIGNED: (pipelineOrder.ASSIGNED || []).filter((id) => allIds.has(id)),
+      CLIENT: (pipelineOrder.CLIENT || []).filter((id) => allIds.has(id)),
+      DONE: (pipelineOrder.DONE || []).filter((id) => allIds.has(id)),
+    };
+
+    let changed = false;
+    ["NEW", "ASSIGNED", "CLIENT", "DONE"].forEach((key) => {
+      const ids = funnelColumns[key].map((item) => item.id);
+      ids.forEach((id) => {
+        if (!nextOrder[key].includes(id)) {
+          nextOrder[key].push(id);
+          changed = true;
+        }
+      });
+    });
+
+    if (!changed) {
+      changed = ["NEW", "ASSIGNED", "CLIENT", "DONE"].some(
+        (key) => (nextOrder[key] || []).length !== (pipelineOrder[key] || []).length
+      );
+    }
+
+    if (changed) {
+      setPipelineOrder(nextOrder);
+      if (isPipelineOrderInitialized) {
+        savePipelinePreferencesMutation.mutate(nextOrder);
+      }
+    }
+  }, [consultationsFeed, funnelColumns, pipelineOrder, isPipelineOrderInitialized]);
 
   const bookingsVsVisits7d = analytics.bookingsVsVisits7d || [];
   const popularServices = analytics.popularServices || [];
@@ -321,6 +565,9 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ["admin-workers"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-blog-posts"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-payments-analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-pipeline-preferences"] }),
     ]);
   };
 
@@ -339,6 +586,88 @@ export default function Admin() {
     } catch {
       alert("Не вдалося скопіювати дані.");
     }
+  };
+
+  const saveInternalNote = (item) => {
+    const value = Object.prototype.hasOwnProperty.call(noteDrafts, item.id)
+      ? noteDrafts[item.id]
+      : item.internalNotes;
+    updateMutation.mutate({ id: item.id, payload: { internalNotes: value ?? null } });
+  };
+
+  const moveConsultationToStage = (item, stageKey) => {
+    if (stageKey === "NEW") {
+      updateMutation.mutate({ id: item.id, payload: { status: "PENDING", assignedManagerId: null } });
+      return;
+    }
+    if (stageKey === "ASSIGNED") {
+      if (!item.assignedManagerId) {
+        alert("Спочатку призначте менеджера у вкладці консультацій.");
+        return;
+      }
+      updateMutation.mutate({ id: item.id, payload: { status: "PENDING" } });
+      return;
+    }
+    if (stageKey === "CLIENT") {
+      if (!item.assignedManagerId) {
+        alert("Не можна підтвердити без менеджера.");
+        return;
+      }
+      updateMutation.mutate({ id: item.id, payload: { status: "CONFIRMED" } });
+      return;
+    }
+    if (stageKey === "DONE") {
+      updateMutation.mutate({ id: item.id, payload: { status: "COMPLETED" } });
+    }
+  };
+
+  const onPipelineDragEnd = (result) => {
+    if (!result.destination) return;
+    const sourceKey = result.source.droppableId;
+    const destKey = result.destination.droppableId;
+    if (!destKey) return;
+
+    const sourceItems = [...(funnelColumns[sourceKey] || [])];
+    if (!sourceItems.length) return;
+
+    if (sourceKey === destKey) {
+      const [movedItem] = sourceItems.splice(result.source.index, 1);
+      if (!movedItem) return;
+      sourceItems.splice(result.destination.index, 0, movedItem);
+      const nextOrder = {
+        ...pipelineOrder,
+        [sourceKey]: sourceItems.map((entry) => entry.id),
+      };
+      setPipelineOrder(nextOrder);
+      if (isPipelineOrderInitialized) {
+        savePipelinePreferencesMutation.mutate(nextOrder);
+      }
+      return;
+    }
+
+    const item = sourceItems[result.source.index];
+    if (!item) return;
+
+    const nextSourceItems = sourceItems.filter((_, index) => index !== result.source.index);
+    const destinationItems = [...(funnelColumns[destKey] || [])];
+    destinationItems.splice(result.destination.index, 0, item);
+
+    const nextOrder = {
+      ...pipelineOrder,
+      [sourceKey]: nextSourceItems.map((entry) => entry.id),
+      [destKey]: destinationItems.map((entry) => entry.id),
+    };
+    setPipelineOrder(nextOrder);
+    if (isPipelineOrderInitialized) {
+      savePipelinePreferencesMutation.mutate(nextOrder);
+    }
+
+    moveConsultationToStage(item, destKey);
+  };
+
+  const stageTimerLabel = (item) => {
+    const base = item.pipelineStageEnteredAt || item.confirmedAt || item.updatedAt || item.createdAt;
+    return formatStageTime(base);
   };
 
   const submitWorker = (e) => {
@@ -426,6 +755,9 @@ export default function Admin() {
             <TabsTrigger value="consultations">Консультації</TabsTrigger>
             <TabsTrigger value="completed">Завершені</TabsTrigger>
             <TabsTrigger value="confirmed">Підтверджені</TabsTrigger>
+            <TabsTrigger value="pipeline">Воронка</TabsTrigger>
+            <TabsTrigger value="clients">Клієнти</TabsTrigger>
+            <TabsTrigger value="payments">Платежі</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
             <TabsTrigger value="calendar">Календар</TabsTrigger>
             <TabsTrigger value="blog">Блог</TabsTrigger>
@@ -472,6 +804,22 @@ export default function Admin() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select value={filters.confirmationType} onValueChange={(value) => setFilters((prev) => ({ ...prev, confirmationType: value }))}>
+                    <SelectTrigger className="lg:max-w-56">
+                      <SelectValue placeholder="Підтвердження" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {confirmationOptions.map((value) => (
+                        <SelectItem key={value || "all-confirm"} value={value}>
+                          {value === "CONFIRMED"
+                            ? "Підтверджені"
+                            : value === "UNCONFIRMED"
+                              ? "Не підтверджені"
+                              : "Усі"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="overflow-x-auto rounded-lg border border-border">
@@ -505,6 +853,7 @@ export default function Admin() {
                           </td>
                           <td className="p-3">
                             <Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge>
+                            <p className="text-xs mt-2 font-medium text-primary/90">Етап: {stageLabel(item)}</p>
                             <p className="text-xs mt-2 text-muted-foreground">
                               {item.assignedManagerId ? "Закріплено" : "На розподіленні / в обробці"}
                             </p>
@@ -525,6 +874,17 @@ export default function Admin() {
                                   ))}
                                 </SelectContent>
                               </Select>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                              <Textarea
+                                value={Object.prototype.hasOwnProperty.call(noteDrafts, item.id) ? noteDrafts[item.id] : (item.internalNotes || "")}
+                                onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                placeholder="Нотатки після консультації"
+                                className="min-h-[72px] text-xs"
+                              />
+                              <Button size="sm" variant="outline" onClick={() => saveInternalNote(item)} disabled={updateMutation.isPending}>
+                                Зберегти нотатку
+                              </Button>
                             </div>
                           </td>
                           <td className="p-3 min-w-[220px]">
@@ -639,6 +999,304 @@ export default function Admin() {
                   </div>
                 ))}
                 {!confirmedConsultations.length && <p className="text-sm text-muted-foreground">Поки немає підтверджених консультацій.</p>}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pipeline" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Воронка заявок</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Перетягуйте картки між колонками для зміни етапу.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Порядок карток зберігається у базі для вашого акаунта.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 w-full xl:w-auto">
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Менеджер</p>
+                      <Select value={pipelineManagerFilter} onValueChange={setPipelineManagerFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Усі менеджери" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Усі менеджери</SelectItem>
+                          <SelectItem value="unassigned">Без менеджера</SelectItem>
+                          {workers.map((worker) => (
+                            <SelectItem key={worker.id} value={worker.id}>
+                              {worker.firstName || worker.email} {worker.lastName || ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Послуга</p>
+                      <Select value={pipelineServiceFilter} onValueChange={setPipelineServiceFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Усі послуги" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Усі послуги</SelectItem>
+                          <SelectItem value="free">Лише безкоштовні</SelectItem>
+                          {pipelineServiceOptions.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Дата від</p>
+                      <Input type="date" value={pipelineDateFrom} onChange={(e) => setPipelineDateFrom(e.target.value)} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Дата до</p>
+                      <Input type="date" value={pipelineDateTo} onChange={(e) => setPipelineDateTo(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Нова → Призначена</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.newToAssigned}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.assignedCount} з {pipelineConversions.newCount || 0} заявок перейшли далі</p>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Призначена → Клієнт</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.assignedToClient}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.clientCount} з {pipelineConversions.assignedCount || 0} дійшли до підтвердження</p>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Клієнт → Завершено</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.clientToDone}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.doneCount} з {pipelineConversions.clientCount || 0} завершені</p>
+                  </div>
+                </div>
+
+                <DragDropContext onDragEnd={onPipelineDragEnd}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {[
+                      { key: "NEW", title: "Нова", items: funnelColumns.NEW },
+                      { key: "ASSIGNED", title: "Призначена консультація", items: funnelColumns.ASSIGNED },
+                      { key: "CLIENT", title: "Клієнт", items: funnelColumns.CLIENT },
+                      { key: "DONE", title: "Завершено", items: funnelColumns.DONE },
+                    ].map((column) => (
+                      <Droppable droppableId={column.key} key={column.key}>
+                        {(dropProvided, dropSnapshot) => (
+                          <div
+                            ref={dropProvided.innerRef}
+                            {...dropProvided.droppableProps}
+                            className={`rounded-lg border p-3 space-y-2 min-h-[260px] transition-colors ${dropSnapshot.isDraggingOver ? "border-primary bg-primary/5" : "border-border bg-muted/20"}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <p className="font-medium text-sm">{column.title}</p>
+                              <Badge variant="outline">{column.items.length}</Badge>
+                            </div>
+
+                            {column.items.map((item, index) => (
+                              <Draggable key={item.id} draggableId={item.id} index={index}>
+                                {(dragProvided, dragSnapshot) => (
+                                  <div
+                                    ref={dragProvided.innerRef}
+                                    {...dragProvided.draggableProps}
+                                    {...dragProvided.dragHandleProps}
+                                    className={`rounded-md border bg-background p-2 text-xs space-y-1 ${dragSnapshot.isDragging ? "shadow-lg border-primary" : ""}`}
+                                  >
+                                    <p className="font-medium">{item.firstName} {item.lastName || ""}</p>
+                                    <p className="text-muted-foreground">{item.email}</p>
+                                    <p className="text-muted-foreground">{item.assignedManager?.firstName || item.assignedManager?.email || "Без менеджера"}</p>
+                                    <p className="text-muted-foreground">В етапі: {stageTimerLabel(item)}</p>
+                                    <div className="flex gap-1 flex-wrap pt-1">
+                                      {item.status !== "CONFIRMED" && item.status !== "COMPLETED" && item.assignedManagerId && (
+                                        <Button size="sm" className="h-7 px-2 bg-green-500 text-white hover:bg-green-600" onClick={() => confirmConsultation(item)}>
+                                          Підтв.
+                                        </Button>
+                                      )}
+                                      {item.status !== "COMPLETED" && (
+                                        <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => updateStatus(item.id, "COMPLETED")}>
+                                          Заверш.
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {!column.items.length && (
+                              <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground bg-background/60">
+                                Наразі в цій колонці немає заявок.
+                              </div>
+                            )}
+                            {dropProvided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    ))}
+                  </div>
+                </DragDropContext>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="clients" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> Картки клієнтів</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Обрати клієнта</p>
+                    <Select value={selectedClient?.key || ""} onValueChange={setSelectedClientKey}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Оберіть клієнта" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clientCards.map((card) => (
+                          <SelectItem key={card.key} value={card.key}>{card.fullName} · {card.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedClient ? (
+                    <div className="rounded-lg border border-border p-4 bg-muted/20 space-y-2">
+                      <p className="font-semibold">Картка 360: {selectedClient.fullName}</p>
+                      <p className="text-xs text-muted-foreground">{selectedClient.email} · {selectedClient.phone}</p>
+                      <p className="text-xs text-muted-foreground">Канал: {contactMethodLabel[selectedClient.preferredContactMethod] || "—"}</p>
+                      <p className="text-xs text-muted-foreground">Всього консультацій: {selectedClient.consultations.length}</p>
+                      <p className="text-xs text-muted-foreground">Останній етап: {stageLabel(selectedClient.consultations[0])}</p>
+                      <p className="text-xs text-muted-foreground">Середній чек клієнта: {formatMoney(averageCheckByEmail.get(String(selectedClient.email || "").toLowerCase()) || 0)}</p>
+                    </div>
+                  ) : null}
+                </div>
+
+                {clientCards.map((card) => {
+                  const latest = card.consultations[0];
+                  return (
+                    <div key={card.key} className="rounded-lg border border-border p-4 space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{card.fullName}</p>
+                          <p className="text-xs text-muted-foreground">{card.email} · {card.phone}</p>
+                          <p className="text-xs text-muted-foreground">Канал: {contactMethodLabel[card.preferredContactMethod] || "—"}</p>
+                          <p className="text-xs text-muted-foreground">Середній чек: {formatMoney(averageCheckByEmail.get(String(card.email || "").toLowerCase()) || 0)}</p>
+                        </div>
+                        <Badge variant="outline">Всього заявок: {card.consultations.length}</Badge>
+                      </div>
+
+                      <div className="rounded-md border p-3 bg-muted/20">
+                        <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Остання заявка</p>
+                        {latest ? (
+                          <>
+                            <p className="text-sm">{formatDateTime(latest.preferredDateTime)} · {latest.serviceName || latest.service?.name || "Безкоштовна консультація"}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Етап: {stageLabel(latest)} · Статус: {latest.status}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Менеджер: {latest.assignedManager?.firstName || latest.assignedManager?.email || "—"}</p>
+                          </>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        {card.consultations.slice(0, 4).map((c) => (
+                          <div key={c.id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs border rounded-md p-2">
+                            <span>{formatDateTime(c.createdAt)}</span>
+                            <span>{c.serviceName || c.service?.name || "Безкоштовна консультація"}</span>
+                            <Badge variant={statusTone[c.status] || "secondary"}>{c.status}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!clientCards.length && <p className="text-sm text-muted-foreground">Картки клієнтів поки порожні.</p>}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="payments" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Середній чек (усі клієнти)</p>
+                <p className="text-2xl font-semibold mt-1">{formatMoney(paymentAnalytics.overall?.averageCheck || 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Оплачених платежів: {paymentAnalytics.overall?.paidOrdersCount || 0}</p>
+              </div>
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Оплачено загалом</p>
+                <p className="text-2xl font-semibold mt-1">{formatMoney(paymentAnalytics.overall?.totalPaid || 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Клієнтів з оплатою: {paymentAnalytics.overall?.paidClientsCount || 0}</p>
+              </div>
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Топ середній чек</p>
+                <p className="text-sm mt-1 font-medium">{paymentAnalytics.perClient?.[0]?.clientName || "—"}</p>
+                <p className="text-xs text-muted-foreground mt-1">{formatMoney(paymentAnalytics.perClient?.[0]?.averageCheck || 0)}</p>
+              </div>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Wallet className="w-5 h-5" /> Облік платежів</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {payments.map((payment) => (
+                  <div key={payment.consultationId} className="rounded-lg border border-border p-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{payment.clientName}</p>
+                        <p className="text-xs text-muted-foreground">{payment.email}</p>
+                        <p className="text-xs text-muted-foreground">{payment.serviceName}</p>
+                        <p className="text-xs text-muted-foreground">Сума: {formatMoney(payment.amount, payment.currency || "UAH")}</p>
+                        <p className="text-xs text-muted-foreground">Середній чек клієнта: {formatMoney(averageCheckByEmail.get(String(payment.email || "").toLowerCase()) || 0, payment.currency || "UAH")}</p>
+                        <p className="text-xs text-muted-foreground">Менеджер: {payment.manager?.firstName || payment.manager?.email || "—"}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant={payment.paymentStatus === "PAID" ? "default" : "secondary"}>{payment.paymentStatus}</Badge>
+                        <Button
+                          size="sm"
+                          className="bg-green-500 text-white hover:bg-green-600"
+                          disabled={payment.paymentStatus === "PAID" || markPaidMutation.isPending}
+                          onClick={() => markPaidMutation.mutate(payment.consultationId)}
+                        >
+                          {payment.paymentStatus === "PAID" ? "Оплачено" : "Позначити як оплачено"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!payments.length && <p className="text-sm text-muted-foreground">Платежів поки немає.</p>}
+
+                {!!paymentAnalytics.perClient?.length && (
+                  <div className="rounded-lg border border-border mt-4 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40 text-left">
+                        <tr>
+                          <th className="p-3 font-medium">Клієнт</th>
+                          <th className="p-3 font-medium">Оплат</th>
+                          <th className="p-3 font-medium">Сума</th>
+                          <th className="p-3 font-medium">Середній чек</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paymentAnalytics.perClient.slice(0, 25).map((client) => (
+                          <tr key={client.email} className="border-t border-border">
+                            <td className="p-3">
+                              <p className="font-medium">{client.clientName}</p>
+                              <p className="text-xs text-muted-foreground">{client.email}</p>
+                            </td>
+                            <td className="p-3">{client.paidOrdersCount}</td>
+                            <td className="p-3">{formatMoney(client.totalPaid)}</td>
+                            <td className="p-3">{formatMoney(client.averageCheck)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1072,6 +1730,11 @@ export default function Admin() {
                   <StatCard title="Платні записи сьогодні" value={analytics.todayPaidBookings ?? 0} icon={Shield} subtitle="Ліди на платні послуги" />
                   <StatCard title="Конверсія за день" value={`${analytics.conversionRateToday ?? 0}%`} icon={TrendingUp} subtitle="Запис / візити" />
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <StatCard title="FREE ліди" value={analytics.freeLeads ?? 0} icon={Users} subtitle="Клієнти з безкоштовної консультації" />
+                  <StatCard title="Стали платними" value={analytics.convertedToPaid ?? 0} icon={Wallet} subtitle="Конвертовані в платні послуги" />
+                  <StatCard title="Конверсія FREE→PAID" value={`${analytics.freeToPaidConversion ?? 0}%`} icon={TrendingUp} subtitle="Ефективність консультацій" />
+                </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   <Card>
@@ -1192,7 +1855,7 @@ export default function Admin() {
           </TabsContent>
         </Tabs>
 
-        {(statsQuery.isLoading || consultationsQuery.isLoading || notificationsQuery.isLoading || auditLogsQuery.isLoading || reviewsQuery.isLoading || workersQuery.isLoading || tasksQuery.isLoading || blogPostsQuery.isLoading) && (
+        {(statsQuery.isLoading || consultationsQuery.isLoading || notificationsQuery.isLoading || auditLogsQuery.isLoading || reviewsQuery.isLoading || workersQuery.isLoading || tasksQuery.isLoading || blogPostsQuery.isLoading || paymentsQuery.isLoading) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Завантаження даних...
           </div>

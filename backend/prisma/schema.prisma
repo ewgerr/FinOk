@@ -29,6 +29,7 @@ model User {
   assignedTasks Task[] @relation("TaskAssignedManager")
   blogPosts     BlogPost[]
   orders        Order[]
+  pipelinePreference PipelinePreference?
   auditLogs     AuditLog[]
   notifications NotificationLog[]
 
@@ -90,6 +91,7 @@ model Consultation {
   confirmedAt   DateTime?
   preferredDateTime DateTime?
   status        ConsultationStatus @default(PENDING) // PENDING, CONFIRMED, COMPLETED, CANCELLED
+  pipelineStageEnteredAt DateTime @default(now())
   
   scheduledAt   DateTime?
   createdAt     DateTime @default(now())
@@ -103,6 +105,17 @@ model Consultation {
   tasks         Task[]
 
   @@map("consultations")
+}
+
+model PipelinePreference {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderJson String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pipeline_preferences")
 }
 
 // Order model (замовлення на платну послугу)

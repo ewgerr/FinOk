@@ -118,6 +118,15 @@ export const apiClient = {
       },
       update: async (id, payload) => request(`/api/entities/Consultation/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
     },
+    payments: {
+      list: async () => requestJson('/api/admin/payments'),
+      analytics: async () => requestJson('/api/admin/payments/analytics'),
+      markPaid: async (consultationId) => request(`/api/admin/payments/${consultationId}/mark-paid`, { method: 'POST' }),
+    },
+    pipeline: {
+      getPreferences: async () => requestJson('/api/admin/pipeline/preferences'),
+      savePreferences: async (order) => request('/api/admin/pipeline/preferences', { method: 'PUT', body: JSON.stringify({ order }) }),
+    },
     tasks: {
       list: async (params = {}) => {
         const search = new URLSearchParams();

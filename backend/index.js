@@ -301,6 +301,15 @@ const consultationPatchSchema = z.object({
   internalNotes: z.string().max(4000).optional().nullable(),
 });
 
+const pipelinePreferenceSchema = z.object({
+  order: z.object({
+    NEW: z.array(z.string()).default([]),
+    ASSIGNED: z.array(z.string()).default([]),
+    CLIENT: z.array(z.string()).default([]),
+    DONE: z.array(z.string()).default([]),
+  }),
+});
+
 const orderSchema = z.object({
   serviceId: z.string().min(1),
 });
@@ -412,6 +421,23 @@ const escapeCsv = (value) => {
   const raw = String(value);
   if (/[,"\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
   return raw;
+};
+
+const parseAmountFromText = (value) => {
+  if (!value) return 0;
+  const match = String(value).match(/([\d\s]+)(?:[.,](\d{1,2}))?/);
+  if (!match) return 0;
+  const whole = Number((match[1] || '0').replace(/\s/g, ''));
+  const cents = Number(match[2] || 0);
+  if (!Number.isFinite(whole)) return 0;
+  return whole + cents / 100;
+};
+
+const resolvePipelineStage = ({ status, assignedManagerId }) => {
+  if (status === 'COMPLETED') return 'DONE';
+  if (status === 'CONFIRMED') return 'CLIENT';
+  if (assignedManagerId) return 'ASSIGNED';
+  return 'NEW';
 };
 
 const buildGoogleCalendarLink = ({ title, description, startDate, endDate, location = '' }) => {
@@ -789,6 +815,7 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
       servicePriceText: consultationType === 'PAID' ? servicePriceText || null : null,
       preferredDateTime: preferredDate,
       status: 'PENDING',
+      pipelineStageEnteredAt: new Date(),
       createdById: req.user?.id || null,
     },
     include: { service: true },
@@ -917,21 +944,26 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
     if (!before) throw new AppError(404, 'Consultation not found');
 
     const nextAssignedManagerId = assignedManagerId === null ? null : (assignedManagerId || before.assignedManagerId || null);
+    const nextStatus = status || before.status;
+    const beforeStage = resolvePipelineStage(before);
+    const afterStage = resolvePipelineStage({ status: nextStatus, assignedManagerId: nextAssignedManagerId });
+    const shouldResetStageClock = beforeStage !== afterStage;
 
-    if (status === 'CONFIRMED' && !nextAssignedManagerId) {
+    if (nextStatus === 'CONFIRMED' && !nextAssignedManagerId) {
       throw new AppError(400, 'Select a manager before confirming consultation');
     }
 
     const consultation = await prisma.consultation.update({
       where: { id },
       data: {
-        status: status || undefined,
+        status: nextStatus,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
         assignedManagerId: assignedManagerId === null ? null : assignedManagerId || undefined,
         internalNotes: internalNotes === null ? null : internalNotes || undefined,
         updatedById: req.user.id,
-        confirmedAt: status === 'CONFIRMED' ? (before.confirmedAt || new Date()) : undefined,
-        confirmedById: status === 'CONFIRMED' ? req.user.id : undefined,
+        confirmedAt: nextStatus === 'CONFIRMED' ? (before.confirmedAt || new Date()) : undefined,
+        confirmedById: nextStatus === 'CONFIRMED' ? req.user.id : undefined,
+        pipelineStageEnteredAt: shouldResetStageClock ? new Date() : undefined,
       },
       include: {
         service: true,
@@ -959,6 +991,30 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
         recipient: consultation.email,
         payload: { status, consultationId: consultation.id },
       });
+
+      if (status === 'CONFIRMED') {
+        const preferredChannel = consultation.preferredContactMethod === 'TELEGRAM'
+          ? 'telegram'
+          : consultation.preferredContactMethod === 'EMAIL'
+            ? 'email'
+            : 'phone';
+        const preferredRecipient = consultation.preferredContactMethod === 'EMAIL'
+          ? consultation.email
+          : consultation.phone;
+
+        await queueNotification({
+          consultationId: consultation.id,
+          channel: preferredChannel,
+          type: 'consultation.confirmed.client',
+          recipient: preferredRecipient,
+          payload: {
+            consultationId: consultation.id,
+            manager: consultation.assignedManager?.firstName || consultation.assignedManager?.email || null,
+            scheduledAt: consultation.preferredDateTime || consultation.scheduledAt || null,
+            googleMeetLink: consultation.googleMeetLink || null,
+          },
+        });
+      }
     }
 
     if (nextAssignedManagerId && consultation.assignedManager) {
@@ -1010,6 +1066,7 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
   const {
     status,
     consultationType,
+    confirmationType,
     assignedManagerId,
     dateFrom,
     dateTo,
@@ -1022,6 +1079,12 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
 
   if (status) where.status = status;
   if (consultationType) where.consultationType = consultationType;
+  if (confirmationType === 'CONFIRMED') {
+    where.status = { in: ['CONFIRMED', 'COMPLETED'] };
+  }
+  if (confirmationType === 'UNCONFIRMED') {
+    where.status = { notIn: ['CONFIRMED', 'COMPLETED'] };
+  }
   if (assignedManagerId) where.assignedManagerId = assignedManagerId;
   if (dateFrom || dateTo) {
     where.preferredDateTime = {};
@@ -1033,6 +1096,7 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
     where,
     include: {
       service: true,
+      order: true,
       assignedManager: { select: pickUserFields },
       createdBy: { select: pickUserFields },
       confirmedBy: { select: pickUserFields },
@@ -1067,6 +1131,7 @@ app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADM
     where,
     include: {
       service: true,
+      order: true,
       assignedManager: { select: pickUserFields },
     },
     orderBy: { createdAt: 'desc' },
@@ -1124,6 +1189,58 @@ app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADM
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="clients-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(`\uFEFF${csv}`);
+}));
+
+app.get('/api/admin/pipeline/preferences', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const record = await prisma.pipelinePreference.findUnique({
+    where: { userId: req.user.id },
+    select: { orderJson: true },
+  });
+
+  const fallback = { NEW: [], ASSIGNED: [], CLIENT: [], DONE: [] };
+  let order = fallback;
+
+  if (record?.orderJson) {
+    try {
+      const parsed = JSON.parse(record.orderJson);
+      order = {
+        NEW: Array.isArray(parsed?.NEW) ? parsed.NEW : [],
+        ASSIGNED: Array.isArray(parsed?.ASSIGNED) ? parsed.ASSIGNED : [],
+        CLIENT: Array.isArray(parsed?.CLIENT) ? parsed.CLIENT : [],
+        DONE: Array.isArray(parsed?.DONE) ? parsed.DONE : [],
+      };
+    } catch {
+      order = fallback;
+    }
+  }
+
+  res.json({ order });
+}));
+
+app.put('/api/admin/pipeline/preferences', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(pipelinePreferenceSchema), asyncHandler(async (req, res) => {
+  const { order } = req.body;
+
+  const record = await prisma.pipelinePreference.upsert({
+    where: { userId: req.user.id },
+    create: {
+      userId: req.user.id,
+      orderJson: JSON.stringify(order),
+    },
+    update: {
+      orderJson: JSON.stringify(order),
+    },
+    select: {
+      userId: true,
+      orderJson: true,
+      updatedAt: true,
+    },
+  });
+
+  res.json({
+    userId: record.userId,
+    order,
+    updatedAt: record.updatedAt,
+  });
 }));
 
 app.post('/api/admin/workers/invite', authMiddleware, requireRole(['ADMIN']), validateBody(workerInviteSchema), asyncHandler(async (req, res) => {
@@ -1304,6 +1421,24 @@ app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER']), a
     ? Number(((todayBookings / todayVisitSet.size) * 100).toFixed(1))
     : 0;
 
+  const freeLeadEmails = new Set(
+    consultations
+      .filter((c) => c.consultationType === 'FREE')
+      .map((c) => (c.email || '').toLowerCase())
+      .filter(Boolean)
+  );
+
+  const convertedToPaidEmails = new Set(
+    consultations
+      .filter((c) => c.consultationType === 'PAID' && freeLeadEmails.has((c.email || '').toLowerCase()))
+      .map((c) => (c.email || '').toLowerCase())
+      .filter(Boolean)
+  );
+
+  const freeToPaidConversion = freeLeadEmails.size
+    ? Number(((convertedToPaidEmails.size / freeLeadEmails.size) * 100).toFixed(1))
+    : 0;
+
   res.json({
     total,
     freeCount,
@@ -1321,6 +1456,9 @@ app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER']), a
       todayBookings,
       todayPaidBookings,
       conversionRateToday,
+      freeLeads: freeLeadEmails.size,
+      convertedToPaid: convertedToPaidEmails.size,
+      freeToPaidConversion,
       popularServices,
       bookingsVsVisits7d,
       consultationTypeShare: [
@@ -1406,6 +1544,169 @@ app.post('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), validateB
   });
 
   res.status(201).json({ ...worker, generatedPassword: password ? null : tempPassword });
+}));
+
+app.get('/api/admin/payments', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const consultations = await prisma.consultation.findMany({
+    where: {
+      ...getManagerRoleFilter(req.user),
+      consultationType: 'PAID',
+    },
+    include: {
+      service: true,
+      order: true,
+      assignedManager: { select: pickUserFields },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const rows = consultations.map((item) => {
+    const amount = item.order?.amount
+      || parseAmountFromText(item.servicePriceText)
+      || Number(item.service?.price || 0)
+      || 0;
+    return {
+      id: item.id,
+      consultationId: item.id,
+      clientName: `${item.firstName} ${item.lastName || ''}`.trim(),
+      email: item.email,
+      serviceName: item.serviceName || item.service?.name || 'Платна консультація',
+      amount,
+      currency: 'UAH',
+      paymentStatus: item.order?.status || 'PENDING',
+      orderId: item.order?.id || null,
+      manager: item.assignedManager || null,
+      createdAt: item.createdAt,
+      consultationStatus: item.status,
+    };
+  });
+
+  res.json(rows);
+}));
+
+app.get('/api/admin/payments/analytics', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const consultations = await prisma.consultation.findMany({
+    where: {
+      ...getManagerRoleFilter(req.user),
+      consultationType: 'PAID',
+    },
+    include: {
+      service: true,
+      order: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const paidRows = consultations
+    .map((item) => {
+      const amount = item.order?.amount
+        || parseAmountFromText(item.servicePriceText)
+        || Number(item.service?.price || 0)
+        || 0;
+      const paymentStatus = item.order?.status || 'PENDING';
+      const key = (item.email || '').trim().toLowerCase();
+      return {
+        id: item.id,
+        clientKey: key,
+        clientName: `${item.firstName} ${item.lastName || ''}`.trim() || item.email,
+        email: item.email,
+        amount,
+        paymentStatus,
+      };
+    })
+    .filter((item) => item.paymentStatus === 'PAID' && Number(item.amount) > 0 && item.clientKey);
+
+  const perClientMap = paidRows.reduce((acc, item) => {
+    if (!acc[item.clientKey]) {
+      acc[item.clientKey] = {
+        clientName: item.clientName,
+        email: item.email,
+        totalPaid: 0,
+        paidOrdersCount: 0,
+      };
+    }
+    acc[item.clientKey].totalPaid += Number(item.amount || 0);
+    acc[item.clientKey].paidOrdersCount += 1;
+    return acc;
+  }, {});
+
+  const perClient = Object.values(perClientMap)
+    .map((item) => ({
+      ...item,
+      averageCheck: item.paidOrdersCount ? Number((item.totalPaid / item.paidOrdersCount).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.averageCheck - a.averageCheck);
+
+  const totalPaid = paidRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const paidOrdersCount = paidRows.length;
+
+  res.json({
+    overall: {
+      totalPaid,
+      paidOrdersCount,
+      averageCheck: paidOrdersCount ? Number((totalPaid / paidOrdersCount).toFixed(2)) : 0,
+      paidClientsCount: perClient.length,
+    },
+    perClient,
+  });
+}));
+
+app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const { consultationId } = req.params;
+
+  const consultation = await prisma.consultation.findFirst({
+    where: {
+      id: consultationId,
+      consultationType: 'PAID',
+      ...getManagerRoleFilter(req.user),
+    },
+    include: { service: true, order: true },
+  });
+
+  if (!consultation) throw new AppError(404, 'Paid consultation not found');
+
+  const amount = consultation.order?.amount
+    || parseAmountFromText(consultation.servicePriceText)
+    || Number(consultation.service?.price || 0)
+    || 0;
+
+  let order = consultation.order;
+  if (!order) {
+    const fallbackServiceId = consultation.serviceId || consultation.service?.id;
+    if (!fallbackServiceId) {
+      throw new AppError(400, 'Cannot mark as paid: consultation has no linked serviceId');
+    }
+
+    order = await prisma.order.create({
+      data: {
+        userId: req.user.id,
+        serviceId: fallbackServiceId,
+        amount,
+        status: 'PAID',
+      },
+    });
+
+    await prisma.consultation.update({
+      where: { id: consultation.id },
+      data: { orderId: order.id },
+    });
+  } else {
+    order = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'PAID' },
+    });
+  }
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultation.id,
+    entityType: 'Order',
+    entityId: order.id,
+    action: 'MARK_PAYMENT_PAID',
+    afterState: order,
+  });
+
+  res.json(order);
 }));
 
 app.get('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
