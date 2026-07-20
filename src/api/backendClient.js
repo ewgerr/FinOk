@@ -8,11 +8,24 @@ async function requestJson(path, opts = {}) {
 }
 
 async function requestBlob(path, opts = {}) {
+  const headers = opts.headers || {};
+
   const res = await fetch(`${API_URL}${path}`, {
-  ...opts,
-  headers,
-  credentials: "include",
-});
+    ...opts,
+    headers,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(res.statusText || "Request failed");
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+
+  return res.blob();
+}
 
   // const headers = opts.headers || {};
   // const res = await fetch(path, { ...opts, headers, credentials: 'include' });
@@ -24,15 +37,29 @@ async function requestBlob(path, opts = {}) {
   //   throw err;
   // }
   // return res.blob();
-  // це для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
-}
+  // !!!!!!це для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
+
 
 async function request(path, opts = {}) {
-const res = await fetch(`${API_URL}${path}`, {
-  ...opts,
-  headers,
-  credentials: "include",
-});
+  const headers = opts.headers || {};
+  headers["Content-Type"] = headers["Content-Type"] || "application/json";
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...opts,
+    headers,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(res.statusText || "Request failed");
+    err.status = res.status;
+    err.body = text;
+    throw err;
+  }
+
+  return res.status === 204 ? null : res.json().catch(() => null);
+}
 //   const headers = opts.headers || {};
 //   headers['Content-Type'] = headers['Content-Type'] || 'application/json';
 //   const res = await fetch(path, { ...opts, headers, credentials: 'include' });
@@ -44,7 +71,8 @@ const res = await fetch(`${API_URL}${path}`, {
 //     throw err;
 //   }
 //   return res.status === 204 ? null : res.json().catch(() => null);
- }
+// !!!!! це для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
+//  }
 
 export const apiClient = {
   blog: {
