@@ -1,36 +1,50 @@
 // Lightweight backend client for the app's own backend
 // Replaces references to external Base44 SDK
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://finok.onrender.com";
 
 async function requestJson(path, opts = {}) {
   return request(path, opts);
 }
 
 async function requestBlob(path, opts = {}) {
-  const headers = opts.headers || {};
-  const res = await fetch(path, { ...opts, headers, credentials: 'include' });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const err = new Error(res.statusText || 'Request failed');
-    err.status = res.status;
-    err.body = text;
-    throw err;
-  }
-  return res.blob();
+  const res = await fetch(`${API_URL}${path}`, {
+  ...opts,
+  headers,
+  credentials: "include",
+});
+
+  // const headers = opts.headers || {};
+  // const res = await fetch(path, { ...opts, headers, credentials: 'include' });
+  // if (!res.ok) {
+  //   const text = await res.text().catch(() => '');
+  //   const err = new Error(res.statusText || 'Request failed');
+  //   err.status = res.status;
+  //   err.body = text;
+  //   throw err;
+  // }
+  // return res.blob();
+  // це для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
 }
 
 async function request(path, opts = {}) {
-  const headers = opts.headers || {};
-  headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-  const res = await fetch(path, { ...opts, headers, credentials: 'include' });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const err = new Error(res.statusText || 'Request failed');
-    err.status = res.status;
-    err.body = text;
-    throw err;
-  }
-  return res.status === 204 ? null : res.json().catch(() => null);
-}
+const res = await fetch(`${API_URL}${path}`, {
+  ...opts,
+  headers,
+  credentials: "include",
+});
+//   const headers = opts.headers || {};
+//   headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+//   const res = await fetch(path, { ...opts, headers, credentials: 'include' });
+//   if (!res.ok) {
+//     const text = await res.text().catch(() => '');
+//     const err = new Error(res.statusText || 'Request failed');
+//     err.status = res.status;
+//     err.body = text;
+//     throw err;
+//   }
+//   return res.status === 204 ? null : res.json().catch(() => null);
+ }
 
 export const apiClient = {
   blog: {
