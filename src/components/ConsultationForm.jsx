@@ -13,7 +13,7 @@ const contactMethodLabels = {
   EMAIL: "Email",
 };
 
-export default function ConsultationForm({ preselectedCategory = "", preselectedServiceName = "", freeOnly = false }) {
+export default function ConsultationForm({ preselectedCategory = "", preselectedServiceName = "", freeOnly = false, selectedServices = [] }) {
   // freeOnly = true → завжди FREE незалежно від props
   const isPaidFlow = !freeOnly && Boolean(preselectedCategory || preselectedServiceName);
 
@@ -26,6 +26,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
     consultationType: isPaidFlow ? "PAID" : "FREE",
     selectedCategoryId: "",
     selectedService: null,
+    selectedServices: selectedServices || [],
     preferredDate: "",
     selectedSlot: "",
     description: "",
@@ -68,6 +69,16 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
       selectedService: serviceByName || prev.selectedService,
     }));
   }, [isPaidFlow, normalizedCategory, preselectedServiceName]);
+  
+  useEffect(() => {
+    if (selectedServices && selectedServices.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        selectedServices: selectedServices,
+        consultationType: "PAID",
+      }));
+    }
+  }, [selectedServices]);
 
   const handleServiceSelect = (service) => {
     setForm((f) => ({
@@ -130,20 +141,29 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
   const handleSubmit = async (e) => {
     e.preventDefault();
     const needDirectContact = form.preferredContactMethod === "PHONE" || form.preferredContactMethod === "TELEGRAM";
+    const effectiveSelectedServices = Array.isArray(form.selectedServices) && form.selectedServices.length > 0
+      ? form.selectedServices
+      : (form.selectedService
+        ? [{
+            name: form.selectedService.name,
+            price: form.selectedService.price,
+            durationMinutes: form.selectedService.durationMinutes,
+            catTitle: selectedCategory?.shortTitle || preselectedCategory || "",
+          }]
+        : []);
 
     if (!form.firstName || !form.email || !form.preferredDate || !form.selectedSlot || !form.consent || (needDirectContact && !form.phone)) {
       alert("Будь ласка, заповніть всі обов'язкові поля та погодьтеся з політикою конфіденційності.");
       return;
     }
 
-    if (isPaidFlow && !form.selectedService) {
+    if (isPaidFlow && effectiveSelectedServices.length === 0) {
       alert("Будь ласка, оберіть послугу.");
       return;
     }
 
     const consultationType = isPaidFlow ? "PAID" : "FREE";
-    const estimatedDuration = consultationType === "FREE" ? 15 : selectedDuration;
-    const selectedCategoryTitle = selectedCategory?.shortTitle || null;
+    const estimatedDuration = consultationType === "FREE" ? 15 : (effectiveSelectedServices[0]?.durationMinutes || 45);
 
     setLoading(true);
     try {
@@ -156,9 +176,10 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
         description: form.description,
         consultationType,
         serviceId: null,
-        serviceName: consultationType === "PAID" ? form.selectedService?.name : null,
-        serviceCategory: consultationType === "PAID" ? selectedCategoryTitle : null,
-        servicePriceText: consultationType === "PAID" ? form.selectedService?.price : null,
+        serviceName: consultationType === "PAID" && effectiveSelectedServices.length === 1 ? effectiveSelectedServices[0]?.name : null,
+        serviceCategory: consultationType === "PAID" && effectiveSelectedServices.length === 1 ? effectiveSelectedServices[0]?.catTitle : null,
+        servicePriceText: consultationType === "PAID" && effectiveSelectedServices.length === 1 ? effectiveSelectedServices[0]?.price : null,
+        selectedServices: consultationType === "PAID" && effectiveSelectedServices.length > 0 ? JSON.stringify(effectiveSelectedServices) : null,
         isPaid: consultationType === "PAID",
         estimatedDuration,
         preferredDateTime: buildPreferredDateTime(),
@@ -319,62 +340,24 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
         </div>
       </div>
 
-      {isPaidFlow && (
-        <>
-          <div>
-            <Label className="text-sm text-foreground/70 block mb-2">
-              Напрямок *
-            </Label>
-            <Select value={form.selectedCategoryId || selectedCategory?.id || ""} onValueChange={handleCategorySelect}>
-              <SelectTrigger className="bg-card border-border">
-                <SelectValue placeholder="Оберіть напрямок" />
-              </SelectTrigger>
-              <SelectContent>
-                {serviceCategories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.shortTitle}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label className="text-sm text-foreground/70 block mb-2">
-              Послуга *
-            </Label>
-            <Select
-              value={form.selectedService?.name || ""}
-              onValueChange={(serviceName) => {
-                const service = selectedCategory?.services.find((s) => s.name === serviceName) || null;
-                if (service) handleServiceSelect(service);
-              }}
-            >
-              <SelectTrigger className="bg-card border-border">
-                <SelectValue placeholder="Оберіть послугу" />
-              </SelectTrigger>
-              <SelectContent>
-                {(selectedCategory?.services || []).map((service) => (
-                  <SelectItem key={service.name} value={service.name}>
-                    {service.name} — {service.price}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {form.selectedService && (
-              <div className="mt-3 p-3 rounded bg-primary/5 border border-primary/20">
-                <p className="text-sm font-medium">
-                  Вибрана послуга: <span className="text-primary">{form.selectedService.name}</span>
-                </p>
-                <p className="text-xs text-foreground/60 mt-1">{form.selectedService.price}</p>
-                <p className="text-xs text-foreground/60 mt-1">
-                  Орієнтовна тривалість: {selectedDuration} хв
-                </p>
+      {isPaidFlow && form.selectedServices && form.selectedServices.length > 0 && (
+        <div className="p-4 rounded-md border border-primary/20 bg-primary/5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">Обрані послуги</p>
+          <div className="space-y-2">
+            {form.selectedServices.map((s) => (
+              <div key={s.key} className="flex items-start justify-between gap-3 pb-2 border-b border-border last:border-0">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{s.name}</p>
+                  <p className="text-xs text-foreground/60">{s.description}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className="text-primary whitespace-nowrap text-sm block">{s.price}</span>
+                  <p className="text-xs text-muted-foreground mt-1">{s.durationMinutes} хв</p>
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        </>
+        </div>
       )}
 
       <div className="p-3 rounded bg-muted/40 border border-border text-xs text-muted-foreground">

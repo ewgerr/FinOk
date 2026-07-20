@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Minus, Plus, ChevronDown, ArrowRight, ArrowLeft, X } from "lucide-react";
+import { Check, ChevronDown, ArrowRight, ArrowLeft } from "lucide-react";
 import { serviceCategories } from "../lib/servicesData";
 import ConsultationForm from "../components/ConsultationForm";
 import { useSearchParams } from "react-router-dom";
@@ -18,8 +18,8 @@ export default function SelectServices() {
   const urlCategory = searchParams.get("category") || "";
   const urlService = searchParams.get("service") || "";
 
-  const [selected, setSelected] = useState({}); // { serviceKey: qty }
-  const [openCats, setOpenCats] = useState(() => Object.fromEntries(serviceCategories.map(c => [c.id, true])));
+  const [selected, setSelected] = useState({}); // { serviceKey: true }
+  const [openCats, setOpenCats] = useState(() => Object.fromEntries(serviceCategories.map(c => [c.id, false])));
   const [step, setStep] = useState(() => urlCategory ? "form" : "select"); // select | form
   const [preselectedCategory, setPreselectedCategory] = useState(urlCategory);
   const [preselectedServiceName, setPreselectedServiceName] = useState(urlService);
@@ -27,6 +27,16 @@ export default function SelectServices() {
   // If URL params arrive after mount (navigation), sync immediately
   useEffect(() => {
     if (urlCategory) {
+      const matchedCategory = serviceCategories.find(
+        (c) => c.shortTitle === urlCategory || c.id === urlCategory
+      );
+      const matchedService = matchedCategory?.services?.find((s) => s.name === urlService) || null;
+
+      if (matchedCategory && matchedService) {
+        const key = `${matchedCategory.id}__${matchedService.name}`;
+        setSelected({ [key]: true });
+      }
+
       setPreselectedCategory(urlCategory);
       setPreselectedServiceName(urlService);
       setStep("form");
@@ -36,24 +46,14 @@ export default function SelectServices() {
 
   const flatServices = useMemo(() => serviceCategories.flatMap(c => c.services.map(s => ({ ...s, catId: c.id, catTitle: c.shortTitle, key: `${c.id}__${s.name}` }))), []);
 
-  const selectedList = useMemo(() => flatServices.filter(s => selected[s.key] > 0), [flatServices, selected]);
-  const totalCount = selectedList.reduce((sum, s) => sum + selected[s.key], 0);
-  const totalPrice = selectedList.reduce((sum, s) => sum + parsePrice(s.price) * selected[s.key], 0);
+  const selectedList = useMemo(() => flatServices.filter(s => Boolean(selected[s.key])), [flatServices, selected]);
+  const totalCount = selectedList.length;
+  const totalPrice = selectedList.reduce((sum, s) => sum + parsePrice(s.price), 0);
 
   const toggle = (key) => {
     setSelected(prev => {
       const next = { ...prev };
-      if (next[key]) delete next[key]; else next[key] = 1;
-      return next;
-    });
-  };
-
-  const changeQty = (key, delta) => {
-    setSelected(prev => {
-      const cur = prev[key] || 0;
-      const nextVal = Math.max(0, cur + delta);
-      const next = { ...prev };
-      if (nextVal === 0) delete next[key]; else next[key] = nextVal;
+      if (next[key]) delete next[key]; else next[key] = true;
       return next;
     });
   };
@@ -90,7 +90,7 @@ export default function SelectServices() {
                 <div key={s.key} className="flex items-center justify-between text-sm">
                   <div className="flex-1 min-w-0 pr-3">
                     <p className="truncate">{s.name}</p>
-                    <p className="text-xs text-muted-foreground">{s.catTitle} × {selected[s.key]}</p>
+                    <p className="text-xs text-muted-foreground">{s.catTitle}</p>
                   </div>
                   <span className="text-primary whitespace-nowrap">{s.price}</span>
                 </div>
@@ -107,6 +107,7 @@ export default function SelectServices() {
           <ConsultationForm
             preselectedCategory={preselectedCategory}
             preselectedServiceName={preselectedServiceName}
+            selectedServices={selectedList}
           />
         </div>
       </div>
@@ -157,8 +158,7 @@ export default function SelectServices() {
                       <div className="divide-y divide-border border-t border-border">
                         {cat.services.map(s => {
                           const key = `${cat.id}__${s.name}`;
-                          const qty = selected[key] || 0;
-                          const isSelected = qty > 0;
+                          const isSelected = Boolean(selected[key]);
                           return (
                             <div key={key} className={`px-5 py-4 transition-colors ${isSelected ? "bg-primary/5" : "hover:bg-card/50"}`}>
                               <div className="flex items-start justify-between gap-4">
@@ -168,25 +168,13 @@ export default function SelectServices() {
                                   <p className="text-sm text-primary mt-2 font-heading">{s.price}</p>
                                 </div>
                                 <div className="shrink-0">
-                                  {!isSelected ? (
-                                    <button
-                                      onClick={() => toggle(key)}
-                                      className="w-9 h-9 rounded-full border border-border flex items-center justify-center hover:border-primary hover:bg-primary hover:text-primary-foreground transition-colors"
-                                      aria-label="Додати"
-                                    >
-                                      <Plus className="w-4 h-4" />
-                                    </button>
-                                  ) : (
-                                    <div className="flex items-center gap-1 bg-primary text-primary-foreground rounded-full p-1">
-                                      <button onClick={() => changeQty(key, -1)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-primary-foreground/20 transition-colors" aria-label="Менше">
-                                        <Minus className="w-3.5 h-3.5" />
-                                      </button>
-                                      <span className="text-sm font-medium w-6 text-center">{qty}</span>
-                                      <button onClick={() => changeQty(key, 1)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-primary-foreground/20 transition-colors" aria-label="Більше">
-                                        <Plus className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  )}
+                                  <button
+                                    onClick={() => toggle(key)}
+                                    className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${isSelected ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary hover:bg-primary/10"}`}
+                                    aria-label={isSelected ? "Зняти вибір" : "Обрати послугу"}
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </div>
                             </div>

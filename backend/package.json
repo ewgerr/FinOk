@@ -11,31 +11,28 @@
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "db:backup": "node scripts/backup-db.js",
-    "test": "node --test test/api.test.js"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "test": "prisma db push --skip-generate && node --test test/api.test.js"
   },
   "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.11.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "express-rate-limit": "^7.5.1",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.11.0",
-    "prisma": "^7.8.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3"
   },
   "allowScripts": {
-    "@prisma/engines@7.8.0": true,
+    "@prisma/engines@6.19.3": true,
     "better-sqlite3@12.11.1": true,
-    "prisma@7.8.0": true
+    "prisma@6.19.3": true
   }
 }

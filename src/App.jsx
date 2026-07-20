@@ -18,6 +18,7 @@ import Price from './pages/Price';
 import About from './pages/About';
 import Contacts from './pages/Contacts';
 import Blog from './pages/Blog';
+import BlogPost from './pages/BlogPost';
 import Privacy from './pages/Privacy';
 import SelectServices from './pages/SelectServices';
 import Login from './pages/Login';
@@ -29,8 +30,98 @@ import AdminRoute from './components/AdminRoute';
 import { ADMIN_PATH } from '@/lib/adminPath';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const routeMeta = {
+      "/": {
+        title: "ФінОк — Управління ФОП, ТОВ, гранти, консалтинг",
+        description: "Реєстрація та супровід ФОП, ТОВ, Дія Сіті, пошук грантів, управлінський облік — 100% онлайн.",
+      },
+      "/fop": { title: "Послуги для ФОП — ФінОк", description: "Реєстрація ФОП, супровід, зміна КВЕД, закриття під ключ." },
+      "/tov": { title: "Послуги для ТОВ — ФінОк", description: "Реєстрація та супровід ТОВ, зміни у складі, ліквідація." },
+      "/it-diya-city": { title: "IT / Дія Сіті — ФінОк", description: "Консультації для IT-ФОП та компаній Дія Сіті." },
+      "/granty-npo": { title: "Гранти та НПО — ФінОк", description: "Допомога з грантовими заявками, реєстрацією ГО/БФ та звітністю." },
+      "/konsaltyng": { title: "Консалтинг — ФінОк", description: "Фінансові моделі, управлінський облік, KPI, бюджетування." },
+      "/prajs": { title: "Прайс послуг — ФінОк", description: "Актуальна вартість послуг для ФОП, ТОВ, IT, НПО." },
+      "/blog": { title: "Блог — ФінОк", description: "Статті та поради для підприємців." },
+      "/kontakty": { title: "Контакти — ФінОк", description: "Зв'яжіться з командою ФінОк зручним каналом." },
+      "/privacy": { title: "Політика конфіденційності — ФінОк", description: "Умови обробки персональних даних сервісом ФінОк." },
+    };
+
+    const pathname = location.pathname;
+    const meta = pathname.startsWith("/blog/")
+      ? { title: "Стаття блогу — ФінОк", description: "Корисні матеріали для підприємців від ФінОк." }
+      : (routeMeta[pathname] || routeMeta["/"]);
+
+    document.title = meta.title;
+
+    const ensureMeta = (name) => {
+      let tag = document.head.querySelector(`meta[name="${name}"]`);
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", name);
+        document.head.appendChild(tag);
+      }
+      return tag;
+    };
+
+    ensureMeta("description").setAttribute("content", meta.description);
+
+    const ensurePropertyMeta = (property) => {
+      let tag = document.head.querySelector(`meta[property="${property}"]`);
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("property", property);
+        document.head.appendChild(tag);
+      }
+      return tag;
+    };
+
+    const canonicalHref = `https://finok.com.ua${pathname === "/" ? "" : pathname}`;
+    let canonical = document.head.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", canonicalHref);
+
+    const robots = ensureMeta("robots");
+    const shouldNoIndex = pathname.startsWith("/login") || pathname.startsWith("/register") || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password") || pathname.startsWith("/control-room");
+    robots.setAttribute("content", shouldNoIndex ? "noindex, nofollow" : "index, follow");
+
+    ensurePropertyMeta("og:type").setAttribute("content", pathname.startsWith("/blog/") ? "article" : "website");
+    ensurePropertyMeta("og:title").setAttribute("content", meta.title);
+    ensurePropertyMeta("og:description").setAttribute("content", meta.description);
+    ensurePropertyMeta("og:url").setAttribute("content", canonicalHref);
+
+    ensureMeta("twitter:card").setAttribute("content", "summary_large_image");
+    ensureMeta("twitter:title").setAttribute("content", meta.title);
+    ensureMeta("twitter:description").setAttribute("content", meta.description);
+
+    let schemaTag = document.head.querySelector('script[data-schema="organization"]');
+    if (!schemaTag) {
+      schemaTag = document.createElement("script");
+      schemaTag.setAttribute("type", "application/ld+json");
+      schemaTag.setAttribute("data-schema", "organization");
+      document.head.appendChild(schemaTag);
+    }
+    schemaTag.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "ФінОк",
+      url: "https://finok.com.ua",
+      logo: "https://finok.com.ua/image/LOGO.png",
+      sameAs: [],
+      contactPoint: [{
+        "@type": "ContactPoint",
+        contactType: "customer support",
+        availableLanguage: ["uk"],
+      }],
+    });
+  }, [location.pathname]);
 
   useEffect(() => {
     const dayKey = new Date().toISOString().slice(0, 10);
@@ -107,6 +198,7 @@ const AuthenticatedApp = () => {
         <Route path="/pro-nas" element={<About />} />
         <Route path="/kontakty" element={<Contacts />} />
         <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/zapis" element={<SelectServices />} />
         <Route path="/login" element={<Login />} />

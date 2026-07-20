@@ -1,25 +1,13 @@
 // Lightweight backend client for the app's own backend
 // Replaces references to external Base44 SDK
 
-const TOKEN_KEY = 'finok_token';
-
-function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
-}
-
-function setToken(t) {
-  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (e) {}
-}
-
 async function requestJson(path, opts = {}) {
   return request(path, opts);
 }
 
 async function requestBlob(path, opts = {}) {
   const headers = opts.headers || {};
-  const token = getToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(path, { ...opts, headers });
+  const res = await fetch(path, { ...opts, headers, credentials: 'include' });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     const err = new Error(res.statusText || 'Request failed');
@@ -32,10 +20,8 @@ async function requestBlob(path, opts = {}) {
 
 async function request(path, opts = {}) {
   const headers = opts.headers || {};
-  const token = getToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
   headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-  const res = await fetch(path, { ...opts, headers });
+  const res = await fetch(path, { ...opts, headers, credentials: 'include' });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     const err = new Error(res.statusText || 'Request failed');
@@ -59,19 +45,22 @@ export const apiClient = {
   },
 
   auth: {
-    setToken: (t) => setToken(t),
-    logout: () => setToken(null),
+    setToken: () => null,
+    logout: async () => {
+      try {
+        await request('/api/auth/logout', { method: 'POST' });
+      } catch {
+        // ignore logout transport errors
+      }
+    },
     redirectToLogin: (returnTo) => { window.location.href = `/login?returnTo=${encodeURIComponent(returnTo || '/')}`; },
 
     loginViaEmailPassword: async (email, password) => {
-      const data = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-      if (data?.token) setToken(data.token);
-      return data;
+      return request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
     },
 
     register: async (payload) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
-    verifyOtp: async (opts) => request('/api/auth/verify-otp', { method: 'POST', body: JSON.stringify(opts) }),
-    resendOtp: async (email) => request('/api/auth/resend-otp', { method: 'POST', body: JSON.stringify({ email }) }),
+    requestPasswordReset: async (email) => request('/api/auth/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) }),
     resetPassword: async ({ resetToken, newPassword }) => request('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ resetToken, newPassword }) }),
 
     loginWithProvider: (provider, redirect) => {

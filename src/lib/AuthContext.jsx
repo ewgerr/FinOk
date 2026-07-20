@@ -1,7 +1,21 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { apiClient } from '@/api/backendClient';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
+
+const authFallback = {
+  user: null,
+  isAuthenticated: false,
+  isLoadingAuth: true,
+  isLoadingPublicSettings: false,
+  authError: null,
+  appPublicSettings: null,
+  authChecked: false,
+  logout: () => {},
+  navigateToLogin: () => {},
+  checkUserAuth: async () => {},
+  checkAppState: async () => {},
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -18,14 +32,7 @@ export const AuthProvider = ({ children }) => {
 
   const checkAppState = async () => {
     setAuthError(null);
-    const hasLocalToken = !!localStorage.getItem('finok_token');
-    if (hasLocalToken) {
-      await checkUserAuth();
-    } else {
-      setIsLoadingAuth(false);
-      setIsAuthenticated(false);
-      setAuthChecked(true);
-    }
+    await checkUserAuth();
   };
 
   const checkUserAuth = async () => {
@@ -38,7 +45,7 @@ export const AuthProvider = ({ children }) => {
       console.error('User auth check failed:', error);
       setUser(null);
       setIsAuthenticated(false);
-      // Clear stale / expired token to prevent infinite redirect loop
+      // Clear stale auth cookies to prevent redirect loops
       if (error.status === 401 || error.status === 403) {
         apiClient.auth.logout();
       }
@@ -85,8 +92,5 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return context || authFallback;
 };

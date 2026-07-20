@@ -56,7 +56,11 @@ export default function Blog() {
                       {post.category ? <Badge variant="secondary">{post.category}</Badge> : null}
                       <Badge variant="outline">{formatDate(post.publishedAt || post.createdAt)}</Badge>
                     </div>
-                    <CardTitle className="text-2xl leading-tight">{post.title}</CardTitle>
+                    <CardTitle className="text-2xl leading-tight">
+                      <Link to={`/blog/${post.slug}`} className="hover:text-primary transition-colors">
+                        {post.title}
+                      </Link>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {post.excerpt ? (
@@ -74,7 +78,10 @@ export default function Blog() {
                     )}
 
                     <div className="pt-2 border-t border-border/50">
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-4">{String(post.content || "")}</p>
+                      <Link to={`/blog/${post.slug}`} className="inline-block mt-3 text-sm text-primary hover:underline">
+                        Читати далі
+                      </Link>
                     </div>
                   </CardContent>
                 </Card>

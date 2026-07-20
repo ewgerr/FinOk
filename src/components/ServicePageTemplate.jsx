@@ -1,6 +1,4 @@
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
 import FAQSection from "./FAQSection";
 import ConsultationSection from "./ConsultationSection";
 
@@ -39,12 +37,6 @@ export default function ServicePageTemplate({ category }) {
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <span className="text-lg font-heading text-primary whitespace-nowrap">{s.price}</span>
-                    <Link
-                      to="/select-services"
-                      className="inline-flex items-center gap-1 text-sm text-foreground/60 hover:text-primary transition-colors"
-                    >
-                      Записатися <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
                   </div>
                 </div>
               </motion.div>

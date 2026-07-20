@@ -2,9 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -19,19 +19,34 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Initialize SQLite adapter for Prisma
-const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './dev.db';
-const adapter = new PrismaBetterSqlite3({ url: dbPath });
-
-// Initialize Prisma client with adapter
-const prisma = new PrismaClient({ adapter });
+// Initialize Prisma client
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || 4000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-me';
 const JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const JWT_RESET_EXPIRES_IN = process.env.JWT_RESET_EXPIRES_IN || '1h';
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
+const COOKIE_SECURE = NODE_ENV === 'production';
+
+const buildCookieOptions = (maxAgeMs) => ({
+  httpOnly: true,
+  secure: COOKIE_SECURE,
+  sameSite: 'lax',
+  path: '/',
+  maxAge: maxAgeMs,
+});
+
+if (NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-secret-change-me') {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET === 'dev-refresh-secret-change-me') {
+    throw new Error('JWT_REFRESH_SECRET must be set in production');
+  }
+}
 
 const parseAllowedOrigins = () => {
   const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
@@ -73,6 +88,19 @@ const signRefreshToken = (user) =>
   jwt.sign({ sub: user.id }, JWT_REFRESH_SECRET, {
     expiresIn: JWT_REFRESH_EXPIRES_IN,
   });
+
+const setAuthCookies = (res, { accessToken, refreshToken }) => {
+  const accessMaxAgeMs = 15 * 60 * 1000;
+  const refreshMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+
+  res.cookie('finok_access_token', accessToken, buildCookieOptions(accessMaxAgeMs));
+  res.cookie('finok_refresh_token', refreshToken, buildCookieOptions(refreshMaxAgeMs));
+};
+
+const clearAuthCookies = (res) => {
+  res.clearCookie('finok_access_token', buildCookieOptions(0));
+  res.clearCookie('finok_refresh_token', buildCookieOptions(0));
+};
 
 const pickUserFields = {
   id: true,
@@ -214,11 +242,16 @@ const generateSlots = ({ date, durationMinutes, consultations, stepMinutes = DEF
 
 const authMiddleware = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  const bearerToken = authHeader?.startsWith('Bearer ')
+    ? authHeader.replace('Bearer ', '').trim()
+    : null;
+  const cookieToken = req.cookies?.finok_access_token || null;
+  const token = bearerToken || cookieToken;
+
+  if (!token) {
     throw new AppError(401, 'Unauthorized');
   }
 
-  const token = authHeader.replace('Bearer ', '').trim();
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET);
@@ -254,7 +287,16 @@ const loginSchema = z.object({
 });
 
 const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional().nullable(),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  resetToken: z.string().min(1),
+  newPassword: z.string().min(8),
 });
 
 const consultationSchema = z
@@ -270,12 +312,13 @@ const consultationSchema = z
     serviceCategory: z.string().optional().nullable(),
     serviceName: z.string().optional().nullable(),
     servicePriceText: z.string().optional().nullable(),
+    selectedServices: z.string().optional().nullable(), // JSON string of selected services
     preferredDateTime: z.string().min(1),
     estimatedDuration: z.coerce.number().int().positive().max(240).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.consultationType === 'PAID') {
-      const hasServiceRef = Boolean(data.serviceId || (data.serviceName && data.serviceCategory));
+      const hasServiceRef = Boolean(data.serviceId || (data.serviceName && data.serviceCategory) || data.selectedServices);
       if (!hasServiceRef) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -433,6 +476,25 @@ const parseAmountFromText = (value) => {
   return whole + cents / 100;
 };
 
+const parseAmountFromSelectedServices = (selectedServicesRaw) => {
+  if (!selectedServicesRaw) return 0;
+
+  try {
+    const services = typeof selectedServicesRaw === 'string'
+      ? JSON.parse(selectedServicesRaw)
+      : selectedServicesRaw;
+
+    if (!Array.isArray(services) || services.length === 0) return 0;
+
+    return services.reduce((sum, service) => {
+      const parsed = parseAmountFromText(service?.price);
+      return sum + (Number.isFinite(parsed) ? parsed : 0);
+    }, 0);
+  } catch {
+    return 0;
+  }
+};
+
 const resolvePipelineStage = ({ status, assignedManagerId }) => {
   if (status === 'COMPLETED') return 'DONE';
   if (status === 'CONFIRMED') return 'CLIENT';
@@ -461,6 +523,14 @@ const authLimiter = rateLimit({
   message: { error: 'Too many auth attempts, try again later' },
 });
 
+const publicFormLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, try again later' },
+});
+
 // Middleware
 app.set('trust proxy', 1);
 app.use(helmet());
@@ -475,6 +545,7 @@ app.use(
   })
 );
 app.use(morgan('short'));
+app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 
 // ============ Health Check ============
@@ -669,6 +740,7 @@ app.post('/api/auth/login', authLimiter, validateBody(loginSchema), asyncHandler
 
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
+  setAuthCookies(res, { accessToken, refreshToken });
 
   res.json({
     token: accessToken,
@@ -687,7 +759,11 @@ app.post('/api/auth/login', authLimiter, validateBody(loginSchema), asyncHandler
 }));
 
 app.post('/api/auth/refresh', authLimiter, validateBody(refreshSchema), asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const refreshToken = req.body?.refreshToken || req.cookies?.finok_refresh_token;
+
+  if (!refreshToken) {
+    throw new AppError(401, 'Refresh token is required');
+  }
 
   let payload;
   try {
@@ -700,7 +776,54 @@ app.post('/api/auth/refresh', authLimiter, validateBody(refreshSchema), asyncHan
   if (!user) throw new AppError(401, 'Unauthorized');
 
   const accessToken = signAccessToken(user);
+  const nextRefreshToken = signRefreshToken(user);
+  setAuthCookies(res, { accessToken, refreshToken: nextRefreshToken });
   res.json({ token: accessToken, accessToken, access_token: accessToken });
+}));
+
+app.post('/api/auth/logout', asyncHandler(async (req, res) => {
+  clearAuthCookies(res);
+  res.status(204).end();
+}));
+
+app.post('/api/auth/request-password-reset', authLimiter, validateBody(forgotPasswordSchema), asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (user) {
+    const resetToken = jwt.sign(
+      { sub: user.id, type: 'password_reset' },
+      JWT_SECRET,
+      { expiresIn: JWT_RESET_EXPIRES_IN }
+    );
+    console.log(`[auth] Password reset requested for ${normalizedEmail}: /reset-password?token=${resetToken}`);
+  }
+
+  res.json({ ok: true, message: 'If account exists, password reset instructions were sent' });
+}));
+
+app.post('/api/auth/reset-password', authLimiter, validateBody(resetPasswordSchema), asyncHandler(async (req, res) => {
+  const { resetToken, newPassword } = req.body;
+
+  let payload;
+  try {
+    payload = jwt.verify(resetToken, JWT_SECRET);
+  } catch {
+    throw new AppError(401, 'Invalid or expired reset token');
+  }
+
+  if (payload?.type !== 'password_reset' || !payload?.sub) {
+    throw new AppError(401, 'Invalid reset token payload');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await prisma.user.update({
+    where: { id: payload.sub },
+    data: { password: passwordHash },
+  });
+
+  res.json({ ok: true });
 }));
 
 // Get current user
@@ -725,7 +848,7 @@ app.get('/api/entities/Service/:id', asyncHandler(async (req, res) => {
 }));
 
 // ============ CONSULTATIONS ENDPOINTS ============
-app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHandler(async (req, res) => {
+app.post('/api/entities/Consultation', publicFormLimiter, validateBody(consultationSchema), asyncHandler(async (req, res) => {
   const {
     email,
     phone,
@@ -738,6 +861,7 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
     serviceCategory,
     serviceName,
     servicePriceText,
+    selectedServices,
     preferredDateTime,
     estimatedDuration,
   } = req.body;
@@ -813,6 +937,7 @@ app.post('/api/entities/Consultation', validateBody(consultationSchema), asyncHa
       serviceCategory: consultationType === 'PAID' ? serviceCategory || null : null,
       serviceName: consultationType === 'PAID' ? serviceName || null : null,
       servicePriceText: consultationType === 'PAID' ? servicePriceText || null : null,
+      selectedServices: consultationType === 'PAID' ? selectedServices || null : null,
       preferredDateTime: preferredDate,
       status: 'PENDING',
       pipelineStageEnteredAt: new Date(),
@@ -1562,6 +1687,7 @@ app.get('/api/admin/payments', authMiddleware, requireRole(['ADMIN', 'MANAGER'])
 
   const rows = consultations.map((item) => {
     const amount = item.order?.amount
+      || parseAmountFromSelectedServices(item.selectedServices)
       || parseAmountFromText(item.servicePriceText)
       || Number(item.service?.price || 0)
       || 0;
@@ -1600,6 +1726,7 @@ app.get('/api/admin/payments/analytics', authMiddleware, requireRole(['ADMIN', '
   const paidRows = consultations
     .map((item) => {
       const amount = item.order?.amount
+        || parseAmountFromSelectedServices(item.selectedServices)
         || parseAmountFromText(item.servicePriceText)
         || Number(item.service?.price || 0)
         || 0;
@@ -1666,20 +1793,48 @@ app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requir
   if (!consultation) throw new AppError(404, 'Paid consultation not found');
 
   const amount = consultation.order?.amount
+    || parseAmountFromSelectedServices(consultation.selectedServices)
     || parseAmountFromText(consultation.servicePriceText)
     || Number(consultation.service?.price || 0)
     || 0;
 
   let order = consultation.order;
   if (!order) {
-    const fallbackServiceId = consultation.serviceId || consultation.service?.id;
+    let fallbackServiceId = consultation.serviceId || consultation.service?.id;
+
+    if (!fallbackServiceId && consultation.serviceName) {
+      const matchedService = await prisma.service.findFirst({
+        where: {
+          name: consultation.serviceName,
+          ...(consultation.serviceCategory ? { category: consultation.serviceCategory } : {}),
+        },
+        select: { id: true },
+      });
+      fallbackServiceId = matchedService?.id || null;
+    }
+
+    if (!fallbackServiceId) {
+      const createdService = await prisma.service.create({
+        data: {
+          name: consultation.serviceName || 'Платна консультація',
+          description: consultation.description || 'Автоматично створена послуга для оплати консультації',
+          price: Number(amount || 0),
+          duration: Number(consultation.estimatedDuration || 45),
+          category: consultation.serviceCategory || 'GENERAL',
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      fallbackServiceId = createdService.id;
+    }
+
     if (!fallbackServiceId) {
       throw new AppError(400, 'Cannot mark as paid: consultation has no linked serviceId');
     }
 
     order = await prisma.order.create({
       data: {
-        userId: req.user.id,
+        userId: consultation.userId || req.user.id,
         serviceId: fallbackServiceId,
         amount,
         status: 'PAID',
@@ -1688,7 +1843,10 @@ app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requir
 
     await prisma.consultation.update({
       where: { id: consultation.id },
-      data: { orderId: order.id },
+      data: {
+        orderId: order.id,
+        serviceId: consultation.serviceId || fallbackServiceId,
+      },
     });
   } else {
     order = await prisma.order.update({

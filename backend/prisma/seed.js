@@ -2,7 +2,6 @@
 // Run: npx prisma db seed
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -10,9 +9,11 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../.env') });
 
-const dbPath = process.env.DATABASE_URL?.replace('file:', '') || './dev.db';
-const adapter = new PrismaBetterSqlite3({ url: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', dbPath) });
-const prisma = new PrismaClient({ adapter });
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'file:./dev.db';
+}
+
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding database...');

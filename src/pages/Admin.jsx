@@ -89,9 +89,47 @@ const buildConfirmationDetails = (item) => [
   `Підтвердив: ${item.confirmedBy?.firstName || item.confirmedBy?.email || "—"}`,
   `Підтверджено: ${formatDateTime(item.confirmedAt || item.updatedAt)}`,
   `Запис: ${formatDateTime(item.preferredDateTime)}`,
-  `Послуга: ${item.serviceName || item.service?.name || "Безкоштовна консультація"}`,
+  `Послуга: ${renderServicesForDisplay(item)}`,
   `Статус: ${item.status}`,
 ].join("\n");
+
+const renderServicesForDisplay = (item) => {
+  if (item.selectedServices) {
+    try {
+      const services = JSON.parse(item.selectedServices);
+      if (Array.isArray(services)) {
+        return services.map(s => s.name).join(", ") || "Безкоштовна консультація";
+      }
+    } catch {}
+  }
+  return item.serviceName || item.service?.name || "Безкоштовна консультація";
+};
+
+const parseMoneyFromText = (value) => {
+  if (!value) return 0;
+  const match = String(value).match(/([\d\s]+)(?:[.,](\d{1,2}))?/);
+  if (!match) return 0;
+  const whole = Number((match[1] || "0").replace(/\s/g, ""));
+  const cents = Number(match[2] || 0);
+  if (!Number.isFinite(whole)) return 0;
+  return whole + cents / 100;
+};
+
+const renderServicePriceForDisplay = (item) => {
+  if (item.selectedServices) {
+    try {
+      const services = JSON.parse(item.selectedServices);
+      if (Array.isArray(services) && services.length > 0) {
+        const total = services.reduce((sum, s) => sum + parseMoneyFromText(s?.price), 0);
+        if (total > 0) {
+          return `Сумарно: від ${total.toLocaleString("uk-UA")} ₴`;
+        }
+      }
+    } catch {}
+  }
+
+  return item.servicePriceText || item.service?.price || "Без ціни";
+};
 
 const getTelegramHref = (item) => {
   const value = String(item.phone || "").trim();
@@ -326,6 +364,10 @@ export default function Admin() {
         queryClient.invalidateQueries({ queryKey: ["admin-consultations"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-consultations-feed"] }),
       ]);
+    },
+    onError: (error) => {
+      const details = typeof error?.body === "string" ? error.body : "";
+      alert(`Не вдалося позначити оплату. ${details || "Спробуйте ще раз."}`);
     },
   });
 
@@ -847,11 +889,17 @@ export default function Admin() {
                             <p className="text-xs text-muted-foreground">{item.consultationType} · {item.estimatedDuration} хв</p>
                           </td>
                           <td className="p-3 min-w-[220px]">
-                            <p className="font-medium">{item.serviceName || item.service?.name || "Безкоштовна консультація"}</p>
+                            <p className="font-medium">{renderServicesForDisplay(item)}</p>
                             <p className="text-xs text-muted-foreground">{item.serviceCategory || item.service?.category || "—"}</p>
-                            <p className="text-xs text-muted-foreground">{item.servicePriceText || item.service?.price || "Без ціни"}</p>
+                            <p className="text-xs text-muted-foreground">{renderServicePriceForDisplay(item)}</p>
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 min-w-[240px]">
+                            {item.description && (
+                              <div className="mb-3 p-2 rounded border border-border bg-muted/30">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Запис клієнта:</p>
+                                <p className="text-xs line-clamp-3">{item.description}</p>
+                              </div>
+                            )}
                             <Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge>
                             <p className="text-xs mt-2 font-medium text-primary/90">Етап: {stageLabel(item)}</p>
                             <p className="text-xs mt-2 text-muted-foreground">
@@ -925,7 +973,7 @@ export default function Admin() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {completedConsultations.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-border p-4 bg-muted/20">
+                  <div key={item.id} className="rounded-lg border border-border p-4 bg-muted/20 space-y-3">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                       <div className="space-y-1">
                         <p className="font-medium">{item.firstName} {item.lastName || ""}</p>
@@ -940,6 +988,17 @@ export default function Admin() {
                           Повернути в консультації
                         </Button>
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Textarea
+                        value={Object.prototype.hasOwnProperty.call(noteDrafts, item.id) ? noteDrafts[item.id] : (item.internalNotes || "")}
+                        onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                        placeholder="Нотатки після зустрічі"
+                        className="min-h-[60px] text-xs"
+                      />
+                      <Button size="sm" variant="outline" onClick={() => saveInternalNote(item)} disabled={updateMutation.isPending}>
+                        Зберегти нотатку
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -968,7 +1027,13 @@ export default function Admin() {
                         <p className="text-sm text-muted-foreground">Запис: {formatDateTime(item.preferredDateTime)}</p>
                         <p className="text-sm text-muted-foreground">Канал: {contactMethodLabel[item.preferredContactMethod] || "—"}</p>
                         <p className="text-sm text-muted-foreground">Контакт: {item.phone || "—"}</p>
-                        <p className="text-sm text-muted-foreground">Послуга: {item.serviceName || item.service?.name || "Безкоштовна консультація"}</p>
+                        <p className="text-sm text-muted-foreground">Послуга: {renderServicesForDisplay(item)}</p>
+                        {item.description && (
+                          <div className="mt-3 p-2 rounded border border-border bg-background/50">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Запис клієнта:</p>
+                            <p className="text-xs">{item.description}</p>
+                          </div>
+                        )}
                       </div>
 
                       <div className="min-w-[240px] space-y-2">

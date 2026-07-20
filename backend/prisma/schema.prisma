@@ -6,6 +6,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // User/Client model
@@ -75,6 +76,7 @@ model Consultation {
   serviceCategory String?
   serviceName     String?
   servicePriceText String?
+  selectedServices String?  // JSON: [{ name, category, price }] для множинного вибору
   assignedManagerId String?
   assignedManager   User? @relation("ConsultationAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
   createdById     String?
