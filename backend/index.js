@@ -59,7 +59,7 @@ if (NODE_ENV === 'production') {
 
 const parseAllowedOrigins = () => {
   // const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
-  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173,https://finok.onrender.com';
+  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173,https://finok-sh4q.onrender.com';
   return fromEnv
     .split(',')
     .map((item) => item.trim())
@@ -554,6 +554,23 @@ const publicFormLimiter = rateLimit({
 });
 
 // Middleware
+app.use(
+  cors({
+    origin(origin, callback) {
+      console.log("Origin:", origin);
+      console.log("Allowed:", allowedOrigins);
+
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin))
+        return callback(null, true);
+
+      return callback(new Error("CORS blocked"));
+    },
+    credentials: true,
+  })
+);
+
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(
