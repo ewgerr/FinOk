@@ -12,6 +12,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,10 +32,18 @@ const JWT_RESET_EXPIRES_IN = process.env.JWT_RESET_EXPIRES_IN || '1h';
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const COOKIE_SECURE = NODE_ENV === 'production';
 
+// const buildCookieOptions = (maxAgeMs) => ({
+//   httpOnly: true,
+//   secure: COOKIE_SECURE,
+//   sameSite: 'lax',
+//   path: '/',
+//   maxAge: maxAgeMs,
+// });
+
 const buildCookieOptions = (maxAgeMs) => ({
   httpOnly: true,
-  secure: COOKIE_SECURE,
-  sameSite: 'lax',
+  secure: true,
+  sameSite: 'none',
   path: '/',
   maxAge: maxAgeMs,
 });
@@ -49,7 +58,8 @@ if (NODE_ENV === 'production') {
 }
 
 const parseAllowedOrigins = () => {
-  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  // const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173,https://finok.onrender.com';
   return fromEnv
     .split(',')
     .map((item) => item.trim())
@@ -254,11 +264,23 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
   let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
-  } catch {
-    throw new AppError(401, 'Invalid or expired token');
-  }
+  console.log("Cookies:", req.cookies);
+  console.log("Token:", token);
+  console.log("JWT_SECRET:", JWT_SECRET ? "SET" : "NOT SET");
 
+  payload = jwt.verify(token, JWT_SECRET);
+
+  console.log("Payload:", payload);
+} catch (err) {
+  console.error("JWT ERROR:", err.message);
+  throw new AppError(401, "Invalid or expired token");
+}
+  // try {
+  //   payload = jwt.verify(token, JWT_SECRET);
+  // } catch {
+  //   throw new AppError(401, 'Invalid or expired token');
+  // }
+  //ЦЕ Теж має бути для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
     select: pickUserFields,
@@ -2171,6 +2193,14 @@ app.delete('/api/admin/reviews/:id', authMiddleware, requireRole(['ADMIN']), asy
   await prisma.review.delete({ where: { id: req.params.id } });
   res.status(204).end();
 }));
+
+// ============ Serve Frontend (можна стерти, якщо не потрібно) ============
+app.use(express.static(path.join(__dirname, "../dist")));
+
+app.get(/^\/(?!api).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
+});
+// ============ Serve Frontend (можна стерти, якщо не потрібно) ============
 
 // ============ Error Handling ============
 app.use((req, res) => {
