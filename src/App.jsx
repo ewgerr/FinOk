@@ -29,6 +29,8 @@ import Admin from './pages/Admin';
 import AdminRoute from './components/AdminRoute';
 import { ADMIN_PATH } from '@/lib/adminPath';
 
+const BACKEND_API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   const location = useLocation();
@@ -113,7 +115,7 @@ const AuthenticatedApp = () => {
       "@type": "Organization",
       name: "ФінОк",
       url: "https://finok.com.ua",
-      logo: "https://finok.com.ua/image/LOGO.png",
+      logo: "https://finok.com.ua/icon-512.svg",
       sameAs: [],
       contactPoint: [{
         "@type": "ContactPoint",
@@ -137,9 +139,10 @@ const AuthenticatedApp = () => {
       localStorage.setItem('finok_visitor_id', visitorId);
     }
 
-    fetch('/api/analytics/visit', {
+    fetch(`${BACKEND_API_URL}/api/analytics/visit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         visitorId,
         path: location.pathname,

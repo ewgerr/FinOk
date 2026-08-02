@@ -1,13 +1,61 @@
 // Lightweight backend client for the app's own backend
 // Replaces references to external Base44 SDK
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const ACCESS_TOKEN_KEY = 'finok_access_token';
+const REFRESH_TOKEN_KEY = 'finok_refresh_token';
+
+const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const getStoredToken = (key) => {
+  if (!canUseStorage()) return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const setStoredToken = (key, value) => {
+  if (!canUseStorage()) return;
+  try {
+    if (value) {
+      window.localStorage.setItem(key, value);
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const clearStoredTokens = () => {
+  setStoredToken(ACCESS_TOKEN_KEY, null);
+  setStoredToken(REFRESH_TOKEN_KEY, null);
+};
+
+const persistTokensFromPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return;
+  const accessToken = payload.accessToken || payload.access_token || payload.token || null;
+  const refreshToken = payload.refreshToken || null;
+  if (accessToken) setStoredToken(ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken) setStoredToken(REFRESH_TOKEN_KEY, refreshToken);
+};
+
+const buildAuthHeaders = (headers = {}) => {
+  const normalized = { ...headers };
+  const accessToken = getStoredToken(ACCESS_TOKEN_KEY);
+  if (accessToken && !normalized.Authorization) {
+    normalized.Authorization = `Bearer ${accessToken}`;
+  }
+  return normalized;
+};
 
 async function requestJson(path, opts = {}) {
   return request(path, opts);
 }
 
 async function requestBlob(path, opts = {}) {
-  const headers = opts.headers || {};
+  const headers = buildAuthHeaders(opts.headers || {});
 
   const res = await fetch(`${API_URL}${path}`, {
     ...opts,
@@ -28,7 +76,7 @@ async function requestBlob(path, opts = {}) {
 
 
 async function request(path, opts = {}) {
-  const headers = opts.headers || {};
+  const headers = buildAuthHeaders(opts.headers || {});
   headers["Content-Type"] = headers["Content-Type"] || "application/json";
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -61,21 +109,30 @@ export const apiClient = {
   },
 
   auth: {
-    setToken: () => null,
+    setToken: (token) => {
+      setStoredToken(ACCESS_TOKEN_KEY, token || null);
+    },
     logout: async () => {
       try {
         await request('/api/auth/logout', { method: 'POST' });
       } catch {
         // ignore logout transport errors
       }
+      clearStoredTokens();
     },
     redirectToLogin: (returnTo) => { window.location.href = `/login?returnTo=${encodeURIComponent(returnTo || '/')}`; },
 
     loginViaEmailPassword: async (email, password) => {
-      return request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      const payload = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      persistTokensFromPayload(payload);
+      return payload;
     },
 
-    register: async (payload) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    register: async (payload) => {
+      const result = await request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+      persistTokensFromPayload(result);
+      return result;
+    },
     requestPasswordReset: async (email) => request('/api/auth/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) }),
     resetPassword: async ({ resetToken, newPassword }) => request('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ resetToken, newPassword }) }),
 
@@ -83,7 +140,23 @@ export const apiClient = {
       window.location.href = `/api/auth/provider/${provider}?redirect=${encodeURIComponent(redirect || '/')}`;
     },
 
-    me: async () => request('/api/auth/me')
+    me: async () => {
+      try {
+        return await request('/api/auth/me');
+      } catch (error) {
+        if (error?.status !== 401) throw error;
+
+        const refreshToken = getStoredToken(REFRESH_TOKEN_KEY);
+        if (!refreshToken) throw error;
+
+        const refreshed = await request('/api/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken }),
+        });
+        persistTokensFromPayload(refreshed);
+        return request('/api/auth/me');
+      }
+    }
   },
 
   entities: {

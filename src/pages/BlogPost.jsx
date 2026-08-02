@@ -89,7 +89,7 @@ export default function BlogPost() {
         name: "ФінОк",
         logo: {
           "@type": "ImageObject",
-          url: "https://finok.com.ua/image/LOGO.png",
+          url: "https://finok.com.ua/icon-512.svg",
         },
       },
       mainEntityOfPage: canonicalHref,

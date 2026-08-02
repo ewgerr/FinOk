@@ -31,7 +31,7 @@ export default function Navbar() {
     <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? "bg-background/90 backdrop-blur-md border-b border-border shadow-sm" : "bg-transparent"}`}>
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link to="/" className="inline-flex items-center">
-          <img src="/image/LOGO.png" alt="ФінОк" className="h-9 w-auto object-contain" />
+          <img src="/icon-192.svg" alt="ФінОк" className="h-9 w-auto object-contain" />
         </Link>
 
         {/* Desktop nav */}
