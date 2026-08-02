@@ -11,6 +11,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 
 dotenv.config();
@@ -2185,13 +2186,28 @@ app.delete('/api/admin/reviews/:id', authMiddleware, requireRole(['ADMIN']), asy
   res.status(204).end();
 }));
 
-// ============ Serve Frontend (можна стерти, якщо не потрібно) ============
-app.use(express.static(path.join(__dirname, "../dist")));
+// ============ Optional frontend serving (single-service deploy) ============
+const frontendDistDir = path.join(__dirname, '../dist');
+const frontendIndexFile = path.join(frontendDistDir, 'index.html');
+const hasFrontendBuild = fs.existsSync(frontendIndexFile);
 
-app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, "../dist/index.html"));
-});
-// ============ Serve Frontend (можна стерти, якщо не потрібно) ============
+if (hasFrontendBuild) {
+  app.use(express.static(frontendDistDir));
+
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.sendFile(frontendIndexFile);
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.status(200).json({
+      ok: true,
+      service: 'finok-backend',
+      message: 'Backend is running. Frontend build was not found in /dist.',
+      health: '/api/health',
+    });
+  });
+}
+// ============ Optional frontend serving (single-service deploy) ============
 
 // ============ Error Handling ============
 app.use((req, res) => {
