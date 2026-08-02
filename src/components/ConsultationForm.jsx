@@ -116,11 +116,10 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
       setSlotsLoading(true);
       setSlotsError("");
       try {
-        const response = await fetch(
-          `/api/entities/Consultation/available-slots?date=${encodeURIComponent(form.preferredDate)}&duration=${selectedDuration}`
-        );
-        if (!response.ok) throw new Error(`Failed to load slots (${response.status})`);
-        const data = await response.json();
+        const data = await apiClient.entities.Consultation.availableSlots({
+          date: form.preferredDate,
+          duration: selectedDuration,
+        });
         setSlots(Array.isArray(data.slots) ? data.slots : []);
         setForm((prev) => ({
           ...prev,
@@ -129,7 +128,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
       } catch (error) {
         console.error('Slots loading error:', error);
         setSlots([]);
-        setSlotsError('Не вдалося завантажити доступні слоти. Спробуйте іншу дату.');
+        setSlotsError('Не вдалося завантажити доступні слоти. Перевірте підключення до сервера та спробуйте іншу дату.');
       } finally {
         setSlotsLoading(false);
       }
