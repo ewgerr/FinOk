@@ -31,19 +31,13 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const JWT_RESET_EXPIRES_IN = process.env.JWT_RESET_EXPIRES_IN || '1h';
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const COOKIE_SECURE = NODE_ENV === 'production';
-
-// const buildCookieOptions = (maxAgeMs) => ({
-//   httpOnly: true,
-//   secure: COOKIE_SECURE,
-//   sameSite: 'lax',
-//   path: '/',
-//   maxAge: maxAgeMs,
-// });
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL || `http://localhost:${PORT}`;
+const ALLOW_ONRENDER_ORIGINS = String(process.env.ALLOW_ONRENDER_ORIGINS || 'true').toLowerCase() === 'true';
 
 const buildCookieOptions = (maxAgeMs) => ({
   httpOnly: true,
-  secure: true,
-  sameSite: 'none',
+  secure: COOKIE_SECURE,
+  sameSite: COOKIE_SECURE ? 'none' : 'lax',
   path: '/',
   maxAge: maxAgeMs,
 });
@@ -58,8 +52,7 @@ if (NODE_ENV === 'production') {
 }
 
 const parseAllowedOrigins = () => {
-  // const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
-  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173,https://finok-sh4q.onrender.com';
+  const fromEnv = process.env.CORS_ORIGIN || 'http://localhost:5173';
   return fromEnv
     .split(',')
     .map((item) => item.trim())
@@ -67,6 +60,18 @@ const parseAllowedOrigins = () => {
 };
 
 const allowedOrigins = parseAllowedOrigins();
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+
+  if (ALLOW_ONRENDER_ORIGINS) {
+    const isRenderOrigin = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin);
+    if (isRenderOrigin) return true;
+  }
+
+  return false;
+};
 
 class AppError extends Error {
   constructor(statusCode, message, details = undefined) {
@@ -264,23 +269,11 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
   let payload;
   try {
-  console.log("Cookies:", req.cookies);
-  console.log("Token:", token);
-  console.log("JWT_SECRET:", JWT_SECRET ? "SET" : "NOT SET");
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    throw new AppError(401, 'Invalid or expired token');
+  }
 
-  payload = jwt.verify(token, JWT_SECRET);
-
-  console.log("Payload:", payload);
-} catch (err) {
-  console.error("JWT ERROR:", err.message);
-  throw new AppError(401, "Invalid or expired token");
-}
-  // try {
-  //   payload = jwt.verify(token, JWT_SECRET);
-  // } catch {
-  //   throw new AppError(401, 'Invalid or expired token');
-  // }
-  //ЦЕ Теж має бути для того щоб обробляти дані здвох сервісів якщо потрібно можна стерти це та залишити так як є
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },
     select: pickUserFields,
@@ -553,31 +546,12 @@ const publicFormLimiter = rateLimit({
   message: { error: 'Too many requests, try again later' },
 });
 
-// Middleware
-app.use(
-  cors({
-    origin(origin, callback) {
-      console.log("Origin:", origin);
-      console.log("Allowed:", allowedOrigins);
-
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin))
-        return callback(null, true);
-
-      return callback(new Error("CORS blocked"));
-    },
-    credentials: true,
-  })
-);
-
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error('CORS blocked')); 
     },
     credentials: true,
@@ -615,7 +589,7 @@ app.get('/api/apps/public/prod/public-settings/by-id/:appId', (req, res) => {
     id: appId,
     name: 'FinOK',
     description: 'Фінансові консультації та послуги',
-    publicApiUrl: `http://localhost:${PORT}`,
+    publicApiUrl: PUBLIC_API_URL,
   });
 });
 
