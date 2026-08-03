@@ -33,6 +33,7 @@ model User {
   pipelinePreference PipelinePreference?
   auditLogs     AuditLog[]
   notifications NotificationLog[]
+  uploadedDocuments ClientDocument[] @relation("DocumentUploadedBy")
 
   @@map("users")
 }
@@ -105,6 +106,7 @@ model Consultation {
   notifications NotificationLog[]
   auditLogs     AuditLog[]
   tasks         Task[]
+  documents     ClientDocument[]
 
   @@map("consultations")
 }
@@ -210,6 +212,31 @@ model BlogPost {
   @@map("blog_posts")
 }
 
+model ClientDocument {
+  id             String   @id @default(cuid())
+  title          String
+  folder         String   @default("General")
+  fileName       String
+  mimeType       String?
+  fileSize       Int?
+  contentBase64  String?
+  externalUrl    String?
+  version        Int      @default(1)
+  documentGroupId String
+  isArchived     Boolean  @default(false)
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  uploadedById   String?
+  uploadedBy     User?    @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([documentGroupId])
+  @@index([consultationId])
+  @@index([folder])
+  @@map("client_documents")
+}
+
 // Enum для типу консультації
 enum ConsultationType {
   FREE
@@ -230,8 +257,11 @@ model Review {
 }
 
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   MANAGER
+  ACCOUNTANT
+  VIEWER
   CLIENT
 }
 

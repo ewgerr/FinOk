@@ -200,6 +200,7 @@ export const apiClient = {
       list: async () => requestJson('/api/admin/payments'),
       analytics: async () => requestJson('/api/admin/payments/analytics'),
       markPaid: async (consultationId) => request(`/api/admin/payments/${consultationId}/mark-paid`, { method: 'POST' }),
+      invoiceUrl: (consultationId) => `${API_URL}/api/admin/payments/${consultationId}/invoice.pdf`,
     },
     pipeline: {
       getPreferences: async () => requestJson('/api/admin/pipeline/preferences'),
@@ -224,6 +225,36 @@ export const apiClient = {
       list: async () => requestJson('/api/admin/reviews'),
       patch: async (id, payload) => request(`/api/admin/reviews/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
       remove: async (id) => request(`/api/admin/reviews/${id}`, { method: 'DELETE' }),
+    },
+    documents: {
+      list: async (params = {}) => {
+        const search = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') search.set(key, value);
+        });
+        return requestJson(`/api/admin/documents${search.toString() ? `?${search.toString()}` : ''}`);
+      },
+      create: async (payload) => request('/api/admin/documents', { method: 'POST', body: JSON.stringify(payload) }),
+      update: async (id, payload) => request(`/api/admin/documents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+      versions: async (id) => requestJson(`/api/admin/documents/${id}/versions`),
+      downloadUrl: (id) => `${API_URL}/api/admin/documents/${id}/download`,
+    },
+    inbox: {
+      list: async (params = {}) => {
+        const search = new URLSearchParams();
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') search.set(key, value);
+        });
+        return requestJson(`/api/admin/inbox${search.toString() ? `?${search.toString()}` : ''}`);
+      },
+      send: async (payload) => request('/api/admin/inbox/send', { method: 'POST', body: JSON.stringify(payload) }),
+    },
+    automations: {
+      templates: async () => requestJson('/api/admin/automations/templates'),
+      run: async (payload) => request('/api/admin/automations/run', { method: 'POST', body: JSON.stringify(payload) }),
+    },
+    calendar: {
+      createRecurring: async (payload) => request('/api/admin/calendar/recurring', { method: 'POST', body: JSON.stringify(payload) }),
     },
   }
 };

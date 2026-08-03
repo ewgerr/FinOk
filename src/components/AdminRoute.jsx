@@ -17,7 +17,8 @@ export default function AdminRoute() {
     return <Navigate to="/login" replace />;
   }
 
-  if (user?.role !== "ADMIN") {
+  const allowedRoles = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
+  if (!allowedRoles.includes(user?.role)) {
     return <AccessDenied />;
   }
 

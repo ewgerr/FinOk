@@ -10,15 +10,57 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { useAuth } from "@/lib/AuthContext";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
+import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical, Inbox, Workflow, FileText } from "lucide-react";
 
 const statusOptions = ["", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const typeOptions = ["", "FREE", "PAID"];
 const confirmationOptions = ["", "CONFIRMED", "UNCONFIRMED"];
 const taskStatusOptions = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"];
 const taskPriorityOptions = ["LOW", "MEDIUM", "HIGH"];
+const ADMIN_TAB_SHORTCUT_ORDER = [
+  "dashboard",
+  "consultations",
+  "pipeline",
+  "clients",
+  "payments",
+  "inbox",
+  "automations",
+  "calendar",
+  "documents",
+  "crm",
+  "notifications",
+  "audit",
+];
+
+const ROLE_CAPABILITIES = {
+  SUPER_ADMIN: {
+    manageWorkers: true,
+    viewAudit: true,
+    manageBlog: true,
+    manageReviews: true,
+    managePayments: true,
+    runAutomations: true,
+  },
+  ADMIN: {
+    manageWorkers: true,
+    viewAudit: true,
+    manageBlog: true,
+    manageReviews: true,
+    managePayments: true,
+    runAutomations: true,
+  },
+  MANAGER: {
+    manageWorkers: false,
+    viewAudit: false,
+    manageBlog: false,
+    manageReviews: true,
+    managePayments: true,
+    runAutomations: true,
+  },
+};
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -304,7 +346,10 @@ function PremiumKpiCard({ title, value, icon: Icon, percentage, trend, todayValu
 }
 
 export default function Admin() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+  const capabilities = ROLE_CAPABILITIES[user?.role] || ROLE_CAPABILITIES.MANAGER;
+  const isAdminRole = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const [activeTab, setActiveTab] = useState("dashboard");
   const [filters, setFilters] = useState({ consultationType: "", status: "", confirmationType: "", search: "" });
   const [workerForm, setWorkerForm] = useState({
@@ -345,6 +390,22 @@ export default function Admin() {
   const [pipelineServiceFilter, setPipelineServiceFilter] = useState("all");
   const [pipelineOrder, setPipelineOrder] = useState(DEFAULT_PIPELINE_ORDER);
   const [isPipelineOrderInitialized, setIsPipelineOrderInitialized] = useState(false);
+  const [notificationReadMap, setNotificationReadMap] = useState({});
+  const [documentsFilter, setDocumentsFilter] = useState({ folder: "all", search: "", consultationId: "" });
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [documentForm, setDocumentForm] = useState({
+    title: "",
+    folder: "General",
+    consultationId: "",
+    fileName: "",
+    mimeType: "",
+    fileSize: null,
+    contentBase64: "",
+    externalUrl: "",
+  });
+  const [inboxFilter, setInboxFilter] = useState({ channel: "", status: "", search: "" });
+  const [inboxForm, setInboxForm] = useState({ consultationId: "", channel: "email", subject: "", message: "", recipient: "" });
+  const [automationForm, setAutomationForm] = useState({ templateKey: "reminder-24h", consultationId: "" });
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
@@ -375,6 +436,7 @@ export default function Admin() {
   const workersQuery = useQuery({
     queryKey: ["admin-workers"],
     queryFn: () => apiClient.admin.workers.list(),
+    enabled: Boolean(user),
   });
 
   const tasksQuery = useQuery({
@@ -385,6 +447,7 @@ export default function Admin() {
   const auditLogsQuery = useQuery({
     queryKey: ["admin-audit-logs"],
     queryFn: () => apiClient.admin.auditLogs(),
+    enabled: capabilities.viewAudit,
   });
 
   const reviewsQuery = useQuery({
@@ -395,6 +458,7 @@ export default function Admin() {
   const blogPostsQuery = useQuery({
     queryKey: ["admin-blog-posts"],
     queryFn: () => apiClient.admin.blog.list(),
+    enabled: capabilities.manageBlog,
   });
 
   const paymentsQuery = useQuery({
@@ -405,6 +469,28 @@ export default function Admin() {
   const paymentAnalyticsQuery = useQuery({
     queryKey: ["admin-payments-analytics"],
     queryFn: () => apiClient.admin.payments.analytics(),
+  });
+
+  const documentsQuery = useQuery({
+    queryKey: ["admin-documents", documentsFilter],
+    queryFn: () => apiClient.admin.documents.list(documentsFilter),
+  });
+
+  const inboxQuery = useQuery({
+    queryKey: ["admin-inbox", inboxFilter],
+    queryFn: () => apiClient.admin.inbox.list(inboxFilter),
+  });
+
+  const automationTemplatesQuery = useQuery({
+    queryKey: ["admin-automation-templates"],
+    queryFn: () => apiClient.admin.automations.templates(),
+    enabled: capabilities.runAutomations,
+  });
+
+  const documentVersionsQuery = useQuery({
+    queryKey: ["admin-document-versions", selectedDocumentId],
+    queryFn: () => apiClient.admin.documents.versions(selectedDocumentId),
+    enabled: Boolean(selectedDocumentId),
   });
 
   const pipelinePreferencesQuery = useQuery({
@@ -527,6 +613,80 @@ export default function Admin() {
     },
   });
 
+  const createDocumentMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.documents.create(payload),
+    onSuccess: async () => {
+      setDocumentForm({
+        title: "",
+        folder: "General",
+        consultationId: "",
+        fileName: "",
+        mimeType: "",
+        fileSize: null,
+        contentBase64: "",
+        externalUrl: "",
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] }),
+      ]);
+    },
+    onError: (error) => {
+      alert(`Не вдалося завантажити документ. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const updateDocumentMutation = useMutation({
+    mutationFn: ({ id, payload }) => apiClient.admin.documents.update(id, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-documents"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] }),
+      ]);
+    },
+  });
+
+  const inboxSendMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.inbox.send(payload),
+    onSuccess: async () => {
+      setInboxForm({ consultationId: "", channel: "email", subject: "", message: "", recipient: "" });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
+      ]);
+    },
+    onError: (error) => {
+      alert(`Не вдалося відправити повідомлення. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const runAutomationMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.automations.run(payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] }),
+      ]);
+    },
+    onError: (error) => {
+      alert(`Автоматизацію не виконано. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const createRecurringMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.calendar.createRecurring(payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations-feed"] }),
+      ]);
+    },
+    onError: (error) => {
+      alert(`Не вдалося створити серію подій. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
   const stats = statsQuery.data || {};
   const consultations = consultationsQuery.data || [];
   const consultationsFeed = consultationsFeedQuery.data || [];
@@ -537,8 +697,34 @@ export default function Admin() {
   const tasks = tasksQuery.data || [];
   const blogPosts = blogPostsQuery.data || [];
   const payments = paymentsQuery.data || [];
+  const documents = documentsQuery.data || [];
+  const inboxItems = inboxQuery.data || [];
+  const automationTemplates = automationTemplatesQuery.data || [];
   const paymentAnalytics = paymentAnalyticsQuery.data || { overall: { averageCheck: 0, totalPaid: 0, paidOrdersCount: 0, paidClientsCount: 0 }, perClient: [] };
   const analytics = stats.analytics || {};
+
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.reduce((acc, item) => {
+      return notificationReadMap[item.id] ? acc : acc + 1;
+    }, 0);
+  }, [notifications, notificationReadMap]);
+
+  const visibleNotifications = useMemo(() => {
+    return notifications.filter((item) => !notificationReadMap[item.id]).slice(0, 20);
+  }, [notifications, notificationReadMap]);
+
+  const documentFolders = useMemo(() => {
+    const folders = new Set(["General"]);
+    documents.forEach((item) => {
+      if (item.folder) folders.add(item.folder);
+    });
+    return Array.from(folders).sort((a, b) => a.localeCompare(b, "uk"));
+  }, [documents]);
+
+  const selectedDocument = useMemo(() => {
+    if (!documents.length) return null;
+    return documents.find((item) => item.id === selectedDocumentId) || documents[0];
+  }, [documents, selectedDocumentId]);
 
   useEffect(() => {
     if (isPipelineOrderInitialized) return;
@@ -1202,8 +1388,18 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ["admin-payments"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-payments-analytics"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-pipeline-preferences"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-documents"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-inbox"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-automation-templates"] }),
     ]);
   };
+
+  const availableTabShortcutOrder = useMemo(() => {
+    return ADMIN_TAB_SHORTCUT_ORDER.filter((tab) => {
+      if (tab === "audit") return capabilities.viewAudit;
+      return true;
+    });
+  }, [capabilities.viewAudit]);
 
   const updateStatus = (id, status) => updateMutation.mutate({ id, payload: { status } });
   const confirmConsultation = (item) => {
@@ -1227,6 +1423,22 @@ export default function Admin() {
       ? noteDrafts[item.id]
       : item.internalNotes;
     updateMutation.mutate({ id: item.id, payload: { internalNotes: value ?? null } });
+  };
+
+  const markNotificationRead = (notificationId) => {
+    setNotificationReadMap((prev) => ({ ...prev, [notificationId]: true }));
+  };
+
+  const markAllNotificationsRead = () => {
+    const next = {};
+    notifications.forEach((item) => {
+      next[item.id] = true;
+    });
+    setNotificationReadMap(next);
+  };
+
+  const resetNotificationsReadState = () => {
+    setNotificationReadMap({});
   };
 
   const moveConsultationToStage = (item, stageKey) => {
@@ -1358,6 +1570,14 @@ export default function Admin() {
         estimatedDuration,
       },
     });
+
+    if (draft.recurringWeekly && Number(draft.recurringCount || 1) > 1) {
+      createRecurringMutation.mutate({
+        consultationId: event.id,
+        occurrences: Number(draft.recurringCount || 1),
+        intervalDays: 7,
+      });
+    }
   };
 
   const onCalendarDragEnd = (result) => {
@@ -1386,6 +1606,10 @@ export default function Admin() {
 
   const submitWorker = (e) => {
     e.preventDefault();
+    if (!capabilities.manageWorkers) {
+      alert("Недостатньо прав для створення працівника");
+      return;
+    }
     createWorkerMutation.mutate({
       firstName: workerForm.firstName,
       lastName: workerForm.lastName || null,
@@ -1441,18 +1665,121 @@ export default function Admin() {
     });
   };
 
+  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не вдалося прочитати файл"));
+    reader.readAsDataURL(file);
+  });
+
+  const handleDocumentFiles = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Файл занадто великий. Максимум 10MB.");
+      return;
+    }
+
+    try {
+      const contentBase64 = await fileToDataUrl(file);
+      setDocumentForm((prev) => ({
+        ...prev,
+        title: prev.title || file.name.replace(/\.[^.]+$/, ""),
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        fileSize: file.size,
+        contentBase64,
+        externalUrl: "",
+      }));
+    } catch {
+      alert("Не вдалося завантажити файл");
+    }
+  };
+
+  const submitDocument = (e) => {
+    e.preventDefault();
+    if (!documentForm.title.trim()) {
+      alert("Вкажіть назву документа");
+      return;
+    }
+
+    if (!documentForm.contentBase64 && !documentForm.externalUrl) {
+      alert("Додайте файл або зовнішнє посилання");
+      return;
+    }
+
+    createDocumentMutation.mutate({
+      title: documentForm.title.trim(),
+      folder: documentForm.folder || "General",
+      fileName: documentForm.fileName || `${documentForm.title.trim()}.txt`,
+      mimeType: documentForm.mimeType || null,
+      fileSize: documentForm.fileSize || null,
+      contentBase64: documentForm.contentBase64 || null,
+      externalUrl: documentForm.externalUrl || null,
+      consultationId: documentForm.consultationId || null,
+      documentGroupId: selectedDocument?.documentGroupId || null,
+    });
+  };
+
+  const submitInboxMessage = (e) => {
+    e.preventDefault();
+    if (!inboxForm.message.trim()) {
+      alert("Вкажіть текст повідомлення");
+      return;
+    }
+    inboxSendMutation.mutate({
+      consultationId: inboxForm.consultationId || null,
+      channel: inboxForm.channel,
+      subject: inboxForm.subject || null,
+      message: inboxForm.message,
+      recipient: inboxForm.recipient || null,
+      type: "inbox.manual",
+    });
+  };
+
+  const runAutomation = (e) => {
+    e.preventDefault();
+    if (automationForm.templateKey === "reminder-24h" && !automationForm.consultationId) {
+      alert("Оберіть консультацію для reminder-24h");
+      return;
+    }
+    runAutomationMutation.mutate({
+      templateKey: automationForm.templateKey,
+      consultationId: automationForm.consultationId || null,
+    });
+  };
+
   useEffect(() => {
     const onHotkey = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         const input = document.getElementById("admin-global-search");
         input?.focus();
+        return;
+      }
+
+      if (event.altKey && /^[1-9]$/.test(event.key)) {
+        const index = Number(event.key) - 1;
+        const tab = availableTabShortcutOrder[index];
+        if (tab) {
+          event.preventDefault();
+          setActiveTab(tab);
+        }
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+        event.preventDefault();
+        const currentIndex = Math.max(availableTabShortcutOrder.indexOf(activeTab), 0);
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        const nextIndex = (currentIndex + step + availableTabShortcutOrder.length) % availableTabShortcutOrder.length;
+        setActiveTab(availableTabShortcutOrder[nextIndex]);
       }
     };
 
     window.addEventListener("keydown", onHotkey);
     return () => window.removeEventListener("keydown", onHotkey);
-  }, []);
+  }, [activeTab, availableTabShortcutOrder]);
 
   return (
     <div className="pt-24 pb-16 bg-gradient-to-b from-white to-slate-50/70">
@@ -1513,12 +1840,22 @@ export default function Admin() {
             <TabsTrigger value="pipeline">Воронка</TabsTrigger>
             <TabsTrigger value="clients">Клієнти</TabsTrigger>
             <TabsTrigger value="payments">Платежі</TabsTrigger>
+            <TabsTrigger value="inbox">Inbox</TabsTrigger>
+            <TabsTrigger value="automations">Automation</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
             <TabsTrigger value="calendar">Календар</TabsTrigger>
-            <TabsTrigger value="blog">Блог</TabsTrigger>
-            <TabsTrigger value="reviews">Відгуки</TabsTrigger>
-            <TabsTrigger value="notifications">Повідомлення</TabsTrigger>
-            <TabsTrigger value="audit">Аудит</TabsTrigger>
+            <TabsTrigger value="documents">Документи</TabsTrigger>
+            {capabilities.manageBlog ? <TabsTrigger value="blog">Блог</TabsTrigger> : null}
+            {capabilities.manageReviews ? <TabsTrigger value="reviews">Відгуки</TabsTrigger> : null}
+            <TabsTrigger value="notifications" className="gap-2">
+              Повідомлення
+              {unreadNotificationsCount > 0 ? (
+                <span className="inline-flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[11px] leading-none">
+                  {unreadNotificationsCount}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            {capabilities.viewAudit ? <TabsTrigger value="audit">Аудит</TabsTrigger> : null}
             <TabsTrigger value="filters">Фільтри</TabsTrigger>
           </TabsList>
 
@@ -1719,15 +2056,18 @@ export default function Admin() {
                   </Select>
                 </div>
 
+                {consultationsQuery.isLoading ? (
+                  <SectionSkeleton rows={5} />
+                ) : (
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-left">
+                    <thead className="bg-muted/40 text-left sticky top-0 z-10">
                       <tr>
                         <th className="p-3 font-medium">Клієнт</th>
                         <th className="p-3 font-medium">Запис</th>
                         <th className="p-3 font-medium">Послуга</th>
                         <th className="p-3 font-medium">Статус</th>
-                        <th className="p-3 font-medium">Керування</th>
+                        <th className="p-3 font-medium sticky right-0 bg-muted/40 border-l border-border">Керування</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1790,7 +2130,7 @@ export default function Admin() {
                               </Button>
                             </div>
                           </td>
-                          <td className="p-3 min-w-[220px]">
+                          <td className="p-3 min-w-[220px] sticky right-0 bg-background border-l border-border">
                             <div className="flex flex-wrap gap-2">
                               {item.status !== "CONFIRMED" && item.status !== "COMPLETED" && (
                                 <Button
@@ -1817,6 +2157,7 @@ export default function Admin() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1929,6 +2270,10 @@ export default function Admin() {
                 <CardTitle>Воронка заявок</CardTitle>
               </CardHeader>
               <CardContent>
+                {consultationsFeedQuery.isLoading ? (
+                  <SectionSkeleton rows={6} />
+                ) : (
+                <>
                 <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-4">
                   <div>
                     <p className="text-xs text-muted-foreground">Перетягуйте картки між колонками для зміни етапу.</p>
@@ -2076,6 +2421,8 @@ export default function Admin() {
                     ))}
                   </div>
                 </DragDropContext>
+                </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2310,6 +2657,14 @@ export default function Admin() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant={payment.paymentStatus === "PAID" ? "default" : "secondary"}>{payment.paymentStatus}</Badge>
+                        <a
+                          href={apiClient.admin.payments.invoiceUrl(payment.consultationId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
+                        >
+                          <FileText className="w-4 h-4 mr-1" /> Invoice PDF
+                        </a>
                         <Button
                           size="sm"
                           className="bg-green-500 text-white hover:bg-green-600"
@@ -2355,6 +2710,162 @@ export default function Admin() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="inbox" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Unified inbox</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <Input
+                    placeholder="Пошук (клієнт, канал, текст)"
+                    value={inboxFilter.search}
+                    onChange={(e) => setInboxFilter((prev) => ({ ...prev, search: e.target.value }))}
+                  />
+                  <Select
+                    value={inboxFilter.channel || "all"}
+                    onValueChange={(value) => setInboxFilter((prev) => ({ ...prev, channel: value === "all" ? "" : value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Канал" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Усі канали</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="telegram">Telegram</SelectItem>
+                      <SelectItem value="sms">SMS</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={inboxFilter.status || "all"}
+                    onValueChange={(value) => setInboxFilter((prev) => ({ ...prev, status: value === "all" ? "" : value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Статус" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Усі статуси</SelectItem>
+                      <SelectItem value="queued">queued</SelectItem>
+                      <SelectItem value="sent">sent</SelectItem>
+                      <SelectItem value="failed">failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" onClick={() => setInboxFilter({ channel: "", status: "", search: "" })}>Скинути</Button>
+                </div>
+
+                <form onSubmit={submitInboxMessage} className="rounded-lg border border-border p-4 bg-muted/20 space-y-3">
+                  <p className="text-sm font-medium">Надіслати вручну</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+                    <Select
+                      value={inboxForm.consultationId || "none"}
+                      onValueChange={(value) => setInboxForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Консультація (опц.)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Без прив'язки</SelectItem>
+                        {consultations.slice(0, 120).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName || ""} · {c.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={inboxForm.channel} onValueChange={(value) => setInboxForm((prev) => ({ ...prev, channel: value }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="telegram">Telegram</SelectItem>
+                        <SelectItem value="sms">SMS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Recipient (опц.)"
+                      value={inboxForm.recipient}
+                      onChange={(e) => setInboxForm((prev) => ({ ...prev, recipient: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="Тема (опц.)"
+                      value={inboxForm.subject}
+                      onChange={(e) => setInboxForm((prev) => ({ ...prev, subject: e.target.value }))}
+                    />
+                  </div>
+                  <Textarea
+                    placeholder="Текст повідомлення"
+                    value={inboxForm.message}
+                    onChange={(e) => setInboxForm((prev) => ({ ...prev, message: e.target.value }))}
+                    required
+                  />
+                  <Button type="submit" disabled={inboxSendMutation.isPending}>
+                    {inboxSendMutation.isPending ? "Надсилання..." : "Надіслати"}
+                  </Button>
+                </form>
+
+                {inboxQuery.isLoading ? (
+                  <SectionSkeleton rows={6} />
+                ) : (
+                  <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                    {inboxItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-border p-3 bg-white">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">{item.client?.name || item.recipient || "Без клієнта"}</p>
+                            <p className="text-xs text-muted-foreground">{item.channel} · {item.type} · {item.status}</p>
+                            <p className="text-xs text-muted-foreground">{item.client?.email || item.recipient || "—"}</p>
+                            <p className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</p>
+                          </div>
+                          <Badge variant="outline">{item.channel}</Badge>
+                        </div>
+                        {item.payload?.subject ? <p className="text-xs mt-2"><span className="font-medium">Тема:</span> {item.payload.subject}</p> : null}
+                        {item.payload?.message ? <p className="text-sm mt-2 text-foreground/90">{item.payload.message}</p> : null}
+                      </div>
+                    ))}
+                    {!inboxItems.length && <p className="text-sm text-muted-foreground">Inbox порожній.</p>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="automations" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Workflow className="w-5 h-5" /> Automation center</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <form onSubmit={runAutomation} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-border p-4 bg-muted/20">
+                  <Select value={automationForm.templateKey} onValueChange={(value) => setAutomationForm((prev) => ({ ...prev, templateKey: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {automationTemplates.map((template) => (
+                        <SelectItem key={template.key} value={template.key}>{template.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={automationForm.consultationId || "none"}
+                    onValueChange={(value) => setAutomationForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Консультація (для reminder)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Не обрано</SelectItem>
+                      {consultations.slice(0, 120).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName || ""} · {c.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="submit" disabled={runAutomationMutation.isPending}>
+                    {runAutomationMutation.isPending ? "Виконання..." : "Run now"}
+                  </Button>
+                </form>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {automationTemplates.map((template) => (
+                    <div key={template.key} className="rounded-lg border border-border bg-white p-3">
+                      <p className="font-medium text-sm">{template.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
+                      <p className="text-[11px] text-muted-foreground mt-2">Key: {template.key}</p>
+                    </div>
+                  ))}
+                  {!automationTemplates.length && <p className="text-sm text-muted-foreground">Шаблони автоматизацій недоступні.</p>}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="crm" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               <StatCard title="Клієнтів у базі" value={stats.totalClients ?? 0} icon={Users} subtitle="Унікальні клієнти за email" />
@@ -2373,24 +2884,27 @@ export default function Admin() {
                 </div>
 
                 <div className="mb-5 p-3 rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
-                  Формування посилань приховано. До керування запрошеннями повернемося пізніше.
+                  {capabilities.manageWorkers
+                    ? "Формування посилань приховано. До керування запрошеннями повернемося пізніше."
+                    : "У вас read-only доступ до працівників. Зміни може вносити адміністратор."}
                 </div>
 
                 <form onSubmit={submitWorker} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  <Input placeholder="Ім'я" value={workerForm.firstName} onChange={(e) => setWorkerForm((p) => ({ ...p, firstName: e.target.value }))} required />
-                  <Input placeholder="Прізвище" value={workerForm.lastName} onChange={(e) => setWorkerForm((p) => ({ ...p, lastName: e.target.value }))} />
-                  <Input type="email" placeholder="Email" value={workerForm.email} onChange={(e) => setWorkerForm((p) => ({ ...p, email: e.target.value }))} required />
-                  <Input placeholder="Телефон" value={workerForm.phone} onChange={(e) => setWorkerForm((p) => ({ ...p, phone: e.target.value }))} />
+                  <Input placeholder="Ім'я" value={workerForm.firstName} onChange={(e) => setWorkerForm((p) => ({ ...p, firstName: e.target.value }))} required disabled={!capabilities.manageWorkers} />
+                  <Input placeholder="Прізвище" value={workerForm.lastName} onChange={(e) => setWorkerForm((p) => ({ ...p, lastName: e.target.value }))} disabled={!capabilities.manageWorkers} />
+                  <Input type="email" placeholder="Email" value={workerForm.email} onChange={(e) => setWorkerForm((p) => ({ ...p, email: e.target.value }))} required disabled={!capabilities.manageWorkers} />
+                  <Input placeholder="Телефон" value={workerForm.phone} onChange={(e) => setWorkerForm((p) => ({ ...p, phone: e.target.value }))} disabled={!capabilities.manageWorkers} />
                   <Select value={workerForm.role} onValueChange={(value) => setWorkerForm((p) => ({ ...p, role: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger disabled={!capabilities.manageWorkers}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MANAGER">MANAGER</SelectItem>
-                      <SelectItem value="CLIENT">CLIENT</SelectItem>
+                      <SelectItem value="ACCOUNTANT">ACCOUNTANT</SelectItem>
+                      <SelectItem value="VIEWER">VIEWER</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input placeholder="Пароль (опціонально)" value={workerForm.password} onChange={(e) => setWorkerForm((p) => ({ ...p, password: e.target.value }))} />
+                  <Input placeholder="Пароль (опціонально)" value={workerForm.password} onChange={(e) => setWorkerForm((p) => ({ ...p, password: e.target.value }))} disabled={!capabilities.manageWorkers} />
                   <div className="md:col-span-2 xl:col-span-3">
-                    <Button type="submit" disabled={createWorkerMutation.isPending}>
+                    <Button type="submit" disabled={createWorkerMutation.isPending || !capabilities.manageWorkers}>
                       {createWorkerMutation.isPending ? 'Створення...' : 'Створити працівника'}
                     </Button>
                   </div>
@@ -2421,6 +2935,44 @@ export default function Admin() {
                       {!workers.length && (
                         <tr><td colSpan={4} className="p-4 text-muted-foreground">Працівників поки немає.</td></tr>
                       )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Permission matrix (preview)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">Поточна роль: <span className="font-medium text-foreground">{user?.role || "ADMIN"}</span></p>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 text-left">
+                      <tr>
+                        <th className="p-3 font-medium">Модуль</th>
+                        <th className="p-3 font-medium">Super Admin</th>
+                        <th className="p-3 font-medium">Admin</th>
+                        <th className="p-3 font-medium">Manager</th>
+                        <th className="p-3 font-medium">Viewer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ["Consultations", "Full", "Full", "Edit own", "Read"],
+                        ["Payments", "Full", "Full", "Read", "Read"],
+                        ["Workers", "Full", "Create/Edit", "Read", "Read"],
+                        ["Audit", "Full", "Read", "Read", "No"],
+                      ].map((row) => (
+                        <tr key={row[0]} className="border-t border-border">
+                          <td className="p-3 font-medium">{row[0]}</td>
+                          <td className="p-3">{row[1]}</td>
+                          <td className="p-3">{row[2]}</td>
+                          <td className="p-3">{row[3]}</td>
+                          <td className="p-3">{row[4]}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -2611,6 +3163,26 @@ export default function Admin() {
                                   {updateMutation.isPending ? "Збереження..." : "Зберегти"}
                                 </Button>
                               </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
+                                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(draft.recurringWeekly)}
+                                    onChange={(e) => upsertCalendarDraft(item, { recurringWeekly: e.target.checked })}
+                                  />
+                                  Щотижнева серія
+                                </label>
+                                <Input
+                                  type="number"
+                                  min={2}
+                                  max={24}
+                                  value={draft.recurringCount || 1}
+                                  onChange={(e) => upsertCalendarDraft(item, { recurringCount: Number(e.target.value) || 1 })}
+                                  disabled={!draft.recurringWeekly}
+                                />
+                                <p className="text-xs text-muted-foreground">Кількість подій у серії</p>
+                              </div>
                             </div>
                           );
                         })}
@@ -2712,6 +3284,154 @@ export default function Admin() {
                     )}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="documents" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Documents module</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
+                  <form onSubmit={submitDocument} className="rounded-xl border border-border bg-white p-4 space-y-3">
+                    <p className="text-sm font-medium">Upload / new version</p>
+                    <Input
+                      placeholder="Назва документа"
+                      value={documentForm.title}
+                      onChange={(e) => setDocumentForm((prev) => ({ ...prev, title: e.target.value }))}
+                      required
+                    />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Папка (напр. Contracts)"
+                        value={documentForm.folder}
+                        onChange={(e) => setDocumentForm((prev) => ({ ...prev, folder: e.target.value || "General" }))}
+                      />
+                      <Select
+                        value={documentForm.consultationId || "none"}
+                        onValueChange={(value) => setDocumentForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Клієнт (опц.)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Без прив'язки</SelectItem>
+                          {consultations.slice(0, 100).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName || ""} · {c.email}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Input
+                      placeholder="Зовнішнє посилання (опц.)"
+                      value={documentForm.externalUrl}
+                      onChange={(e) => setDocumentForm((prev) => ({ ...prev, externalUrl: e.target.value }))}
+                    />
+
+                    <div
+                      className="rounded-lg border border-dashed border-border p-4 text-center bg-muted/20"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDocumentFiles(e.dataTransfer?.files || []);
+                      }}
+                    >
+                      <p className="text-sm">Перетягніть файл сюди або виберіть вручну</p>
+                      <Input
+                        type="file"
+                        className="mt-3"
+                        onChange={(e) => handleDocumentFiles(e.target.files || [])}
+                      />
+                      {documentForm.fileName ? (
+                        <p className="text-xs text-muted-foreground mt-2">{documentForm.fileName} · {(Number(documentForm.fileSize || 0) / 1024).toFixed(1)} KB</p>
+                      ) : null}
+                    </div>
+
+                    <Button type="submit" className="w-full" disabled={createDocumentMutation.isPending}>
+                      {createDocumentMutation.isPending ? "Завантаження..." : "Зберегти документ"}
+                    </Button>
+                  </form>
+
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <Input
+                        placeholder="Пошук документів"
+                        value={documentsFilter.search}
+                        onChange={(e) => setDocumentsFilter((prev) => ({ ...prev, search: e.target.value }))}
+                      />
+                      <Select
+                        value={documentsFilter.folder || "all"}
+                        onValueChange={(value) => setDocumentsFilter((prev) => ({ ...prev, folder: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Папка" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Усі папки</SelectItem>
+                          {documentFolders.map((folder) => (
+                            <SelectItem key={folder} value={folder}>{folder}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" onClick={() => setDocumentsFilter({ folder: "all", search: "", consultationId: "" })}>Скинути</Button>
+                    </div>
+
+                    {documentsQuery.isLoading ? (
+                      <SectionSkeleton rows={5} />
+                    ) : (
+                      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                        {documents.map((doc) => (
+                          <div key={doc.id} className={`rounded-lg border p-3 bg-white ${selectedDocument?.id === doc.id ? "border-primary" : "border-border"}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <button type="button" className="text-left flex-1" onClick={() => setSelectedDocumentId(doc.id)}>
+                                <p className="font-medium text-sm">{doc.title}</p>
+                                <p className="text-xs text-muted-foreground">{doc.fileName} · v{doc.version} · {doc.folder}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateTime(doc.updatedAt)} · {doc.uploadedBy?.firstName || doc.uploadedBy?.email || "—"}</p>
+                              </button>
+                              <div className="flex items-center gap-1">
+                                <a href={apiClient.admin.documents.downloadUrl(doc.id)} className="h-8 px-2 inline-flex items-center rounded-md border text-xs hover:bg-muted" target="_blank" rel="noreferrer">Download</a>
+                                <Button size="sm" variant="outline" onClick={() => updateDocumentMutation.mutate({ id: doc.id, payload: { isArchived: !doc.isArchived } })}>
+                                  {doc.isArchived ? "Restore" : "Archive"}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {!documents.length && <p className="text-sm text-muted-foreground">Документів поки немає.</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Card className="border-border/80">
+                  <CardHeader>
+                    <CardTitle className="text-base">Version history</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedDocument ? (
+                      <div className="space-y-2">
+                        {(documentVersionsQuery.data || []).map((version) => (
+                          <div key={version.id} className="rounded-lg border border-border p-3 flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium">v{version.version} · {version.fileName}</p>
+                              <p className="text-xs text-muted-foreground">{formatDateTime(version.createdAt)} · {version.uploadedBy?.firstName || version.uploadedBy?.email || "—"}</p>
+                            </div>
+                            <a href={apiClient.admin.documents.downloadUrl(version.id)} className="h-8 px-3 inline-flex items-center rounded-md border text-xs hover:bg-muted" target="_blank" rel="noreferrer">Download</a>
+                          </div>
+                        ))}
+                        {!documentVersionsQuery.isLoading && !(documentVersionsQuery.data || []).length && (
+                          <p className="text-sm text-muted-foreground">Історія версій порожня.</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Оберіть документ для перегляду версій.</p>
+                    )}
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </TabsContent>
@@ -2873,7 +3593,16 @@ export default function Admin() {
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
                   <StatCard title="Нових записів (сьогодні)" value={analytics.todayBookings ?? 0} icon={Users} subtitle="Нові клієнти за поточний день" />
                   <StatCard title="Не розподілено" value={stats.unassignedCount ?? 0} icon={UserPlus} subtitle="Клієнти без відповідального" />
-                  <StatCard title="У черзі повідомлень" value={notifications.length} icon={Bell} subtitle="Системні нотифікації" />
+                  <StatCard title="Непрочитані" value={unreadNotificationsCount} icon={Bell} subtitle={`Усього: ${notifications.length}`} />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={markAllNotificationsRead} disabled={!unreadNotificationsCount}>
+                    Прочитати всі
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={resetNotificationsReadState}>
+                    Скинути
+                  </Button>
                 </div>
 
                 <div className="space-y-3">
@@ -2905,8 +3634,8 @@ export default function Admin() {
                 <div className="pt-2">
                   <p className="text-sm font-medium mb-2">Системна черга повідомлень</p>
                   <div className="space-y-2">
-                    {notifications.slice(0, 12).map((item) => (
-                      <div key={item.id} className="p-3 rounded-lg border border-border">
+                    {visibleNotifications.map((item) => (
+                      <button key={item.id} type="button" onClick={() => markNotificationRead(item.id)} className="w-full text-left p-3 rounded-lg border border-border hover:border-primary transition-colors">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="font-medium text-sm">{item.type}</p>
@@ -2915,8 +3644,9 @@ export default function Admin() {
                           <Badge variant="outline">{item.status}</Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">{formatDateTime(item.createdAt)}</p>
-                      </div>
+                      </button>
                     ))}
+                    {!visibleNotifications.length && <p className="text-sm text-muted-foreground">Немає непрочитаних повідомлень.</p>}
                   </div>
                 </div>
               </CardContent>
@@ -3060,12 +3790,22 @@ export default function Admin() {
           </TabsContent>
         </Tabs>
 
-        {(statsQuery.isLoading || consultationsQuery.isLoading || notificationsQuery.isLoading || auditLogsQuery.isLoading || reviewsQuery.isLoading || workersQuery.isLoading || tasksQuery.isLoading || blogPostsQuery.isLoading || paymentsQuery.isLoading) && (
+        {(statsQuery.isLoading || consultationsQuery.isLoading || notificationsQuery.isLoading || auditLogsQuery.isLoading || reviewsQuery.isLoading || workersQuery.isLoading || tasksQuery.isLoading || blogPostsQuery.isLoading || paymentsQuery.isLoading || documentsQuery.isLoading || inboxQuery.isLoading || automationTemplatesQuery.isLoading) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Завантаження даних...
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function SectionSkeleton({ rows = 4 }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={`skeleton-${index}`} className="h-14 rounded-lg border border-border bg-muted/30 animate-pulse" />
+      ))}
     </div>
   );
 }
