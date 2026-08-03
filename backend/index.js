@@ -219,9 +219,18 @@ const queueNotification = async ({ consultationId = null, userId = null, channel
 const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'];
 const WORKER_ROLES = ['MANAGER', 'ACCOUNTANT', 'VIEWER'];
 const ADMIN_PANEL_ROLES = [...ADMIN_ROLES, ...WORKER_ROLES];
+const INBOX_CHANNELS = ['email', 'telegram', 'instagram', 'facebook', 'sms'];
 
 const isAdminRole = (role) => ADMIN_ROLES.includes(role);
 const isAllowedWorkerRole = (role) => WORKER_ROLES.includes(role);
+const canViewAdminPanel = (role) => ADMIN_PANEL_ROLES.includes(role);
+const canWriteConsultations = (role) => isAdminRole(role) || role === 'MANAGER';
+const canManagePayments = (role) => isAdminRole(role) || role === 'MANAGER' || role === 'ACCOUNTANT';
+const canManageDocuments = (role) => isAdminRole(role) || role === 'MANAGER' || role === 'ACCOUNTANT';
+const canManageWorkers = (role) => isAdminRole(role);
+const canRunAutomations = (role) => isAdminRole(role) || role === 'MANAGER';
+const canManageContent = (role) => isAdminRole(role);
+const canViewAudit = (role) => isAdminRole(role);
 
 const requireRole = (allowedRoles) => (req, res, next) => {
   if (!req.user) throw new AppError(401, 'Unauthorized');
@@ -457,7 +466,7 @@ const documentPatchSchema = z.object({
 
 const inboxSendSchema = z.object({
   consultationId: z.string().optional().nullable(),
-  channel: z.enum(['email', 'telegram', 'sms']).default('email'),
+  channel: z.enum(['email', 'telegram', 'instagram', 'facebook', 'sms']).default('email'),
   type: z.string().min(3).max(120).default('inbox.manual'),
   recipient: z.string().max(200).optional().nullable(),
   message: z.string().min(1).max(4000),
@@ -465,7 +474,7 @@ const inboxSendSchema = z.object({
 });
 
 const automationRunSchema = z.object({
-  templateKey: z.enum(['reminder-24h', 'payment-reminder', 'followup-pending']),
+  templateKey: z.enum(['reminder-24h', 'payment-reminder', 'followup-pending', 'omni-followup']),
   consultationId: z.string().optional().nullable(),
 });
 
@@ -473,6 +482,23 @@ const recurringScheduleSchema = z.object({
   consultationId: z.string().min(1),
   occurrences: z.coerce.number().int().min(2).max(24).default(4),
   intervalDays: z.coerce.number().int().min(1).max(30).default(7),
+});
+
+const recurringExceptionSchema = z.object({
+  seriesId: z.string().min(1),
+  occurrenceIndex: z.coerce.number().int().min(1),
+  reason: z.string().max(300).optional().nullable(),
+});
+
+const calendarSyncPushSchema = z.object({
+  consultationId: z.string().min(1),
+  provider: z.enum(['google']).default('google'),
+});
+
+const aiRunSchema = z.object({
+  scenario: z.enum(['client-summary', 'next-action', 'reply-draft']),
+  consultationId: z.string().optional().nullable(),
+  input: z.string().max(4000).optional().nullable(),
 });
 
 const blogPostCreateSchema = z.object({
@@ -572,15 +598,15 @@ const parseAmountFromSelectedServices = (selectedServicesRaw) => {
   }
 };
 
-const createInvoicePdf = ({ invoiceNumber, payment, consultation, managerName }) => {
+const createPaymentPdf = ({ documentTitle, documentNumber, payment, consultation, managerName, footerNote }) => {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const chunks = [];
   doc.on('data', (chunk) => chunks.push(chunk));
 
   const today = new Date().toLocaleDateString('uk-UA');
-  doc.fontSize(22).text('FINOK INVOICE', { align: 'left' });
+  doc.fontSize(22).text(`FINOK ${documentTitle.toUpperCase()}`, { align: 'left' });
   doc.moveDown(0.5);
-  doc.fontSize(11).fillColor('#555').text(`Invoice #: ${invoiceNumber}`);
+  doc.fontSize(11).fillColor('#555').text(`${documentTitle} #: ${documentNumber}`);
   doc.text(`Date: ${today}`);
   doc.text(`Currency: ${payment.currency || 'UAH'}`);
   doc.moveDown();
@@ -601,12 +627,90 @@ const createInvoicePdf = ({ invoiceNumber, payment, consultation, managerName })
   doc.fillColor('#111').fontSize(11).text(`Payment status: ${payment.paymentStatus || 'PENDING'}`);
   doc.moveDown(2);
 
-  doc.fontSize(10).fillColor('#666').text('This invoice was generated automatically by FinOK CRM.', { align: 'left' });
+  doc.fontSize(10).fillColor('#666').text(footerNote || 'This payment document was generated automatically by FinOK CRM.', { align: 'left' });
   doc.end();
 
   return new Promise((resolve) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
   });
+};
+
+const buildConsultationAIPromptData = async (consultationId) => {
+  if (!consultationId) return null;
+  const consultation = await prisma.consultation.findUnique({
+    where: { id: consultationId },
+    include: {
+      assignedManager: { select: pickUserFields },
+      order: true,
+      service: true,
+      tasks: true,
+    },
+  });
+  if (!consultation) return null;
+
+  return {
+    id: consultation.id,
+    clientName: `${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+    email: consultation.email,
+    phone: consultation.phone,
+    status: consultation.status,
+    type: consultation.consultationType,
+    service: consultation.serviceName || consultation.service?.name || 'Безкоштовна консультація',
+    notes: consultation.description || '',
+    manager: consultation.assignedManager?.firstName || consultation.assignedManager?.email || null,
+    tasks: consultation.tasks?.map((task) => ({
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate,
+    })) || [],
+    paymentStatus: consultation.order?.status || 'PENDING',
+  };
+};
+
+const runAIScenario = ({ scenario, input = '', context = null }) => {
+  const safeInput = String(input || '').trim();
+  const baseContext = context || {};
+
+  if (scenario === 'client-summary') {
+    return {
+      scenario,
+      output: `Клієнт: ${baseContext.clientName || '—'}; статус: ${baseContext.status || '—'}; послуга: ${baseContext.service || '—'}; оплата: ${baseContext.paymentStatus || '—'}; задач: ${baseContext.tasks?.length || 0}.`,
+      confidence: 0.72,
+      source: 'rule-engine',
+    };
+  }
+
+  if (scenario === 'next-action') {
+    const hasOpenTasks = (baseContext.tasks || []).some((task) => ['TODO', 'IN_PROGRESS'].includes(task.status));
+    let suggestion = 'Уточнити деталі запиту та підтвердити зручний слот.';
+    if (baseContext.status === 'PENDING') suggestion = 'Призначити менеджера та відправити follow-up клієнту.';
+    if (baseContext.status === 'CONFIRMED' && baseContext.paymentStatus !== 'PAID') suggestion = 'Надіслати нагадування про оплату та підготувати інвойс.';
+    if (hasOpenTasks) suggestion = 'Закрити відкриті задачі перед наступним етапом.';
+    return {
+      scenario,
+      output: suggestion,
+      confidence: 0.68,
+      source: 'rule-engine',
+    };
+  }
+
+  if (scenario === 'reply-draft') {
+    const greeting = baseContext.clientName ? `Доброго дня, ${baseContext.clientName}!` : 'Доброго дня!';
+    return {
+      scenario,
+      output: `${greeting}\n\nДякуємо за звернення до FinOK. ${safeInput || 'Ми взяли ваш запит у роботу.'}\n\nЗ повагою, команда FinOK.`,
+      confidence: 0.64,
+      source: 'rule-engine',
+    };
+  }
+
+  return {
+    scenario,
+    output: 'Сценарій не підтримується.',
+    confidence: 0.1,
+    source: 'rule-engine',
+  };
 };
 
 const resolvePipelineStage = ({ status, assignedManagerId }) => {
@@ -1173,6 +1277,7 @@ app.get('/api/entities/Consultation/:id', authMiddleware, asyncHandler(async (re
 
 // Update consultation status
 app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consultationPatchSchema), asyncHandler(async (req, res) => {
+  if (!canWriteConsultations(req.user.role)) throw new AppError(403, 'Forbidden');
   const { id } = req.params;
   const { status, scheduledAt, estimatedDuration, assignedManagerId, internalNotes } = req.body;
 
@@ -1300,7 +1405,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
 }));
 
 // ============ ADMIN ENDPOINTS ============
-app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const {
     status,
     consultationType,
@@ -1363,7 +1468,7 @@ app.get('/api/admin/consultations', authMiddleware, requireRole(['ADMIN', 'MANAG
   res.json(filtered);
 }));
 
-app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const where = getManagerRoleFilter(req.user);
   const consultations = await prisma.consultation.findMany({
     where,
@@ -1429,7 +1534,7 @@ app.get('/api/admin/consultations/export.csv', authMiddleware, requireRole(['ADM
   res.send(`\uFEFF${csv}`);
 }));
 
-app.get('/api/admin/pipeline/preferences', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/pipeline/preferences', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const record = await prisma.pipelinePreference.findUnique({
     where: { userId: req.user.id },
     select: { orderJson: true },
@@ -1516,7 +1621,7 @@ app.post('/api/admin/workers/invite', authMiddleware, requireRole(['ADMIN']), va
   res.status(201).json({ email, role, inviteLink, expiresIn: '7d' });
 }));
 
-app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/stats', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const where = getManagerRoleFilter(req.user);
   const consultations = await prisma.consultation.findMany({
     where,
@@ -1724,7 +1829,7 @@ app.get('/api/admin/audit-logs', authMiddleware, requireRole(['ADMIN']), asyncHa
   })));
 }));
 
-app.get('/api/admin/notifications', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/notifications', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const logs = await prisma.notificationLog.findMany({
     include: {
       consultation: true,
@@ -1739,7 +1844,7 @@ app.get('/api/admin/notifications', authMiddleware, requireRole(['ADMIN', 'MANAG
   })));
 }));
 
-app.get('/api/admin/workers', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/workers', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const workers = await prisma.user.findMany({
     where: isAdminRole(req.user.role)
       ? { role: { in: WORKER_ROLES } }
@@ -1759,6 +1864,7 @@ app.get('/api/admin/workers', authMiddleware, requireRole(['ADMIN', 'MANAGER']),
 }));
 
 app.post('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), validateBody(workerCreateSchema), asyncHandler(async (req, res) => {
+  if (!canManageWorkers(req.user.role)) throw new AppError(403, 'Forbidden');
   const { email, firstName, lastName, phone, password, role } = req.body;
   const tempPassword = password || 'Temp123456!';
   const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
@@ -1786,7 +1892,7 @@ app.post('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), validateB
   res.status(201).json({ ...worker, generatedPassword: password ? null : tempPassword });
 }));
 
-app.get('/api/admin/payments', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/payments', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const consultations = await prisma.consultation.findMany({
     where: {
       ...getManagerRoleFilter(req.user),
@@ -1825,7 +1931,7 @@ app.get('/api/admin/payments', authMiddleware, requireRole(['ADMIN', 'MANAGER'])
   res.json(rows);
 }));
 
-app.get('/api/admin/payments/analytics', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/payments/analytics', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const consultations = await prisma.consultation.findMany({
     where: {
       ...getManagerRoleFilter(req.user),
@@ -1893,7 +1999,8 @@ app.get('/api/admin/payments/analytics', authMiddleware, requireRole(['ADMIN', '
   });
 }));
 
-app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT']), asyncHandler(async (req, res) => {
+  if (!canManagePayments(req.user.role)) throw new AppError(403, 'Forbidden');
   const { consultationId } = req.params;
 
   const consultation = await prisma.consultation.findFirst({
@@ -1982,7 +2089,8 @@ app.post('/api/admin/payments/:consultationId/mark-paid', authMiddleware, requir
   res.json(order);
 }));
 
-app.get('/api/admin/payments/:consultationId/invoice.pdf', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/payments/:consultationId/invoice.pdf', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  if (!canManagePayments(req.user.role)) throw new AppError(403, 'Forbidden');
   const { consultationId } = req.params;
   const consultation = await prisma.consultation.findFirst({
     where: {
@@ -2017,7 +2125,14 @@ app.get('/api/admin/payments/:consultationId/invoice.pdf', authMiddleware, requi
 
   const invoiceNumber = `FINOK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${consultation.id.slice(-6).toUpperCase()}`;
   const managerName = consultation.assignedManager?.firstName || consultation.assignedManager?.email || null;
-  const pdfBuffer = await createInvoicePdf({ invoiceNumber, payment, consultation, managerName });
+  const pdfBuffer = await createPaymentPdf({
+    documentTitle: 'Invoice',
+    documentNumber: invoiceNumber,
+    payment,
+    consultation,
+    managerName,
+    footerNote: 'This invoice was generated automatically by FinOK CRM.',
+  });
 
   await logAudit({
     actorUserId: req.user.id,
@@ -2037,7 +2152,115 @@ app.get('/api/admin/payments/:consultationId/invoice.pdf', authMiddleware, requi
   res.send(pdfBuffer);
 }));
 
-app.get('/api/admin/inbox', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/payments/:consultationId/receipt.pdf', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  if (!canManagePayments(req.user.role)) throw new AppError(403, 'Forbidden');
+  const { consultationId } = req.params;
+  const consultation = await prisma.consultation.findFirst({
+    where: {
+      id: consultationId,
+      consultationType: 'PAID',
+      ...getManagerRoleFilter(req.user),
+    },
+    include: { service: true, order: true, assignedManager: { select: pickUserFields } },
+  });
+  if (!consultation) throw new AppError(404, 'Paid consultation not found');
+
+  const amount = consultation.order?.amount
+    || parseAmountFromSelectedServices(consultation.selectedServices)
+    || parseAmountFromText(consultation.servicePriceText)
+    || Number(consultation.service?.price || 0)
+    || 0;
+
+  const payment = {
+    consultationId: consultation.id,
+    clientName: `${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+    email: consultation.email,
+    serviceName: consultation.serviceName || consultation.service?.name || 'Платна консультація',
+    amount,
+    currency: 'UAH',
+    paymentStatus: consultation.order?.status || 'PENDING',
+  };
+
+  const receiptNumber = `REC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${consultation.id.slice(-6).toUpperCase()}`;
+  const managerName = consultation.assignedManager?.firstName || consultation.assignedManager?.email || null;
+  const pdfBuffer = await createPaymentPdf({
+    documentTitle: 'Receipt',
+    documentNumber: receiptNumber,
+    payment,
+    consultation,
+    managerName,
+    footerNote: 'This receipt confirms payment registration in FinOK CRM.',
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultation.id,
+    entityType: 'Receipt',
+    entityId: receiptNumber,
+    action: 'EXPORT_PAYMENT_RECEIPT',
+    metadata: { amount, currency: 'UAH', consultationId: consultation.id },
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="receipt-${consultation.id}.pdf"`);
+  res.send(pdfBuffer);
+}));
+
+app.get('/api/admin/payments/:consultationId/contract.pdf', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  if (!canManagePayments(req.user.role)) throw new AppError(403, 'Forbidden');
+  const { consultationId } = req.params;
+  const consultation = await prisma.consultation.findFirst({
+    where: {
+      id: consultationId,
+      consultationType: 'PAID',
+      ...getManagerRoleFilter(req.user),
+    },
+    include: { service: true, order: true, assignedManager: { select: pickUserFields } },
+  });
+  if (!consultation) throw new AppError(404, 'Paid consultation not found');
+
+  const amount = consultation.order?.amount
+    || parseAmountFromSelectedServices(consultation.selectedServices)
+    || parseAmountFromText(consultation.servicePriceText)
+    || Number(consultation.service?.price || 0)
+    || 0;
+
+  const payment = {
+    consultationId: consultation.id,
+    clientName: `${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+    email: consultation.email,
+    serviceName: consultation.serviceName || consultation.service?.name || 'Платна консультація',
+    amount,
+    currency: 'UAH',
+    paymentStatus: consultation.order?.status || 'PENDING',
+  };
+
+  const contractNumber = `CNT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${consultation.id.slice(-6).toUpperCase()}`;
+  const managerName = consultation.assignedManager?.firstName || consultation.assignedManager?.email || null;
+  const pdfBuffer = await createPaymentPdf({
+    documentTitle: 'Contract',
+    documentNumber: contractNumber,
+    payment,
+    consultation,
+    managerName,
+    footerNote: 'Template contract generated by FinOK CRM for workflow operations.',
+  });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultation.id,
+    entityType: 'Contract',
+    entityId: contractNumber,
+    action: 'EXPORT_PAYMENT_CONTRACT',
+    metadata: { amount, currency: 'UAH', consultationId: consultation.id },
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="contract-${consultation.id}.pdf"`);
+  res.send(pdfBuffer);
+}));
+
+app.get('/api/admin/inbox', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const { channel, status, search } = req.query;
   const where = {};
   if (channel) where.channel = String(channel);
@@ -2105,8 +2328,10 @@ app.get('/api/admin/inbox', authMiddleware, requireRole(['ADMIN', 'MANAGER']), a
   res.json(rows);
 }));
 
-app.post('/api/admin/inbox/send', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(inboxSendSchema), asyncHandler(async (req, res) => {
+app.post('/api/admin/inbox/send', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT']), validateBody(inboxSendSchema), asyncHandler(async (req, res) => {
+  if (!canWriteConsultations(req.user.role) && req.user.role !== 'ACCOUNTANT') throw new AppError(403, 'Forbidden');
   const { consultationId, channel, type, recipient, message, subject } = req.body;
+  if (!INBOX_CHANNELS.includes(channel)) throw new AppError(400, 'Unsupported channel');
 
   let consultation = null;
   if (consultationId) {
@@ -2167,30 +2392,45 @@ app.post('/api/admin/inbox/send', authMiddleware, requireRole(['ADMIN', 'MANAGER
   });
 }));
 
-app.get('/api/admin/automations/templates', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/automations/templates', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   res.json([
     {
       key: 'reminder-24h',
       title: 'Нагадування за 24 години',
       description: 'Відправляє нагадування клієнту перед консультацією.',
       requiresConsultation: true,
+      trigger: 'manual.run',
+      actions: ['resolve-contact-channel', 'send-message'],
     },
     {
       key: 'payment-reminder',
       title: 'Нагадування про оплату',
       description: 'Відправляє повідомлення клієнтам з неоплаченими платними консультаціями.',
       requiresConsultation: false,
+      trigger: 'scheduled.daily',
+      actions: ['filter-unpaid', 'send-message'],
     },
     {
       key: 'followup-pending',
       title: 'Follow-up для PENDING',
       description: 'Надсилає follow-up клієнтам зі статусом PENDING старше 2 днів.',
       requiresConsultation: false,
+      trigger: 'scheduled.daily',
+      actions: ['filter-pending>2d', 'send-message'],
+    },
+    {
+      key: 'omni-followup',
+      title: 'Omni follow-up chain',
+      description: 'Ланцюжок Email → Telegram → Instagram/Facebook (якщо немає відповіді).',
+      requiresConsultation: true,
+      trigger: 'manual.run',
+      actions: ['send-email', 'send-telegram', 'send-instagram', 'send-facebook'],
     },
   ]);
 }));
 
 app.post('/api/admin/automations/run', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(automationRunSchema), asyncHandler(async (req, res) => {
+  if (!canRunAutomations(req.user.role)) throw new AppError(403, 'Forbidden');
   const { templateKey, consultationId } = req.body;
 
   if (templateKey === 'reminder-24h') {
@@ -2326,10 +2566,180 @@ app.post('/api/admin/automations/run', authMiddleware, requireRole(['ADMIN', 'MA
     return;
   }
 
+  if (templateKey === 'omni-followup') {
+    if (!consultationId) throw new AppError(400, 'consultationId is required for omni-followup');
+    const consultation = await prisma.consultation.findFirst({
+      where: {
+        id: consultationId,
+        ...getManagerRoleFilter(req.user),
+      },
+    });
+    if (!consultation) throw new AppError(404, 'Consultation not found');
+
+    const chain = [
+      { channel: 'email', recipient: consultation.email },
+      { channel: 'telegram', recipient: consultation.phone },
+      { channel: 'instagram', recipient: consultation.phone },
+      { channel: 'facebook', recipient: consultation.phone },
+    ];
+
+    const sent = [];
+    for (const step of chain) {
+      if (!step.recipient) continue;
+      await queueNotification({
+        consultationId: consultation.id,
+        userId: req.user.id,
+        channel: step.channel,
+        type: 'automation.omni-followup',
+        recipient: step.recipient,
+        payload: {
+          message: 'Нагадування від FinOK щодо вашої консультації. Будемо раді відповісти на запитання.',
+          chain: 'omni-followup',
+          step: step.channel,
+        },
+      });
+      sent.push(step.channel);
+    }
+
+    await logAudit({
+      actorUserId: req.user.id,
+      consultationId: consultation.id,
+      entityType: 'Automation',
+      entityId: consultation.id,
+      action: 'RUN_TEMPLATE_OMNI_FOLLOWUP',
+      metadata: { templateKey, sent },
+    });
+
+    res.json({ ok: true, templateKey, processed: 1, sentChannels: sent });
+    return;
+  }
+
   throw new AppError(400, 'Unsupported automation template');
 }));
 
+app.get('/api/admin/ai/scenarios', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  res.json([
+    {
+      key: 'client-summary',
+      title: 'Client summary',
+      description: 'Стисла зведена картка клієнта, оплати і задач.',
+    },
+    {
+      key: 'next-action',
+      title: 'Next best action',
+      description: 'Рекомендований наступний крок для менеджера.',
+    },
+    {
+      key: 'reply-draft',
+      title: 'Reply draft',
+      description: 'Чернетка відповіді клієнту за поточним контекстом.',
+    },
+  ]);
+}));
+
+app.post('/api/admin/ai/run', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), validateBody(aiRunSchema), asyncHandler(async (req, res) => {
+  const { scenario, consultationId, input } = req.body;
+  const context = consultationId ? await buildConsultationAIPromptData(consultationId) : null;
+  if (consultationId && !context) throw new AppError(404, 'Consultation not found');
+
+  const result = runAIScenario({ scenario, input, context });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultationId || null,
+    entityType: 'AI',
+    entityId: scenario,
+    action: 'RUN_AI_SCENARIO',
+    metadata: {
+      scenario,
+      consultationId: consultationId || null,
+      confidence: result.confidence,
+      source: result.source,
+    },
+  });
+
+  res.json({
+    scenario,
+    context,
+    ...result,
+  });
+}));
+
+app.get('/api/admin/calendar/sync/providers', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  res.json({
+    providers: [
+      {
+        key: 'google',
+        title: 'Google Calendar',
+        enabled: googleEnabled,
+        scopes: ['calendar.events.readonly', 'calendar.events'],
+      },
+    ],
+  });
+}));
+
+app.get('/api/admin/calendar/sync/google/connect-url', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${allowedOrigins[0] || 'http://localhost:5173'}/admin/calendar/google/callback`;
+  if (!clientId) {
+    res.json({ enabled: false, message: 'Google sync is not configured' });
+    return;
+  }
+
+  const state = `${req.user.id}:${Date.now()}`;
+  const scope = encodeURIComponent('https://www.googleapis.com/auth/calendar.events');
+  const connectUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&access_type=offline&prompt=consent&scope=${scope}&state=${encodeURIComponent(state)}`;
+  res.json({ enabled: true, provider: 'google', connectUrl });
+}));
+
+app.post('/api/admin/calendar/sync/push', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(calendarSyncPushSchema), asyncHandler(async (req, res) => {
+  const { consultationId, provider } = req.body;
+  const consultation = await prisma.consultation.findFirst({
+    where: {
+      id: consultationId,
+      ...getManagerRoleFilter(req.user),
+    },
+  });
+  if (!consultation) throw new AppError(404, 'Consultation not found');
+
+  const startAt = consultation.scheduledAt || consultation.preferredDateTime;
+  const endAt = startAt
+    ? addMinutes(new Date(startAt), Number(consultation.estimatedDuration || 45))
+    : null;
+
+  const eventPayload = {
+    title: `Консультація: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
+    description: consultation.description || '',
+    startAt,
+    endAt,
+    attendeeEmail: consultation.email,
+  };
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultation.id,
+    entityType: 'CalendarSync',
+    entityId: consultation.id,
+    action: 'PUSH_EVENT_TO_PROVIDER',
+    metadata: {
+      provider,
+      eventPayload,
+      simulated: true,
+    },
+  });
+
+  res.json({
+    ok: true,
+    provider,
+    simulated: true,
+    message: 'Sync adapter stub is ready. Wire OAuth tokens + API call to enable production sync.',
+    eventPayload,
+  });
+}));
+
 app.post('/api/admin/calendar/recurring', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(recurringScheduleSchema), asyncHandler(async (req, res) => {
+  if (!canWriteConsultations(req.user.role)) throw new AppError(403, 'Forbidden');
   const { consultationId, occurrences, intervalDays } = req.body;
 
   const base = await prisma.consultation.findFirst({
@@ -2346,8 +2756,29 @@ app.post('/api/admin/calendar/recurring', authMiddleware, requireRole(['ADMIN', 
   const baseStart = getConsultationStart(base);
   if (!baseStart) throw new AppError(400, 'Base consultation has no schedule date');
 
+  const series = await prisma.recurringSeries.create({
+    data: {
+      title: `${base.firstName} ${base.lastName || ''}`.trim() || base.email,
+      consultationType: base.consultationType,
+      intervalDays,
+      plannedOccurrences: occurrences,
+      startAt: baseStart,
+      createdById: req.user.id,
+    },
+  });
+
+  await prisma.consultation.update({
+    where: { id: base.id },
+    data: {
+      recurringSeriesId: series.id,
+      recurringOccurrence: 1,
+    },
+  });
+
   const created = [];
+  const skipped = [];
   for (let index = 1; index < occurrences; index += 1) {
+    const occurrenceIndex = index + 1;
     const nextStart = addMinutes(baseStart, intervalDays * 24 * 60 * index);
     const { start: dayStart, end: dayEnd } = getDayBounds(nextStart);
 
@@ -2375,7 +2806,18 @@ app.post('/api/admin/calendar/recurring', authMiddleware, requireRole(['ADMIN', 
       return overlaps(nextStart, nextEnd, existingStart, existingEnd);
     });
 
-    if (hasConflict) continue;
+    if (hasConflict) {
+      await prisma.recurringException.create({
+        data: {
+          recurringSeriesId: series.id,
+          occurrenceIndex,
+          action: 'SKIP',
+          reason: 'Time conflict',
+        },
+      });
+      skipped.push({ occurrenceIndex, date: nextStart, reason: 'Time conflict' });
+      continue;
+    }
 
     const clone = await prisma.consultation.create({
       data: {
@@ -2401,10 +2843,13 @@ app.post('/api/admin/calendar/recurring', authMiddleware, requireRole(['ADMIN', 
         scheduledAt: nextStart,
         status: 'PENDING',
         pipelineStageEnteredAt: new Date(),
+        recurringSeriesId: series.id,
+        recurringOccurrence: occurrenceIndex,
       },
       select: {
         id: true,
         preferredDateTime: true,
+        recurringOccurrence: true,
       },
     });
 
@@ -2418,20 +2863,118 @@ app.post('/api/admin/calendar/recurring', authMiddleware, requireRole(['ADMIN', 
     entityId: base.id,
     action: 'CREATE_RECURRING_SERIES',
     metadata: {
+      seriesId: series.id,
       baseConsultationId: base.id,
       requestedOccurrences: occurrences,
       intervalDays,
       createdCount: created.length,
       createdIds: created.map((item) => item.id),
+      skippedCount: skipped.length,
     },
   });
 
   res.status(201).json({
+    seriesId: series.id,
     baseConsultationId: base.id,
     requestedOccurrences: occurrences,
     intervalDays,
     createdCount: created.length,
     created,
+    skipped,
+  });
+}));
+
+app.get('/api/admin/calendar/recurring/:seriesId', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
+  const { seriesId } = req.params;
+  const series = await prisma.recurringSeries.findUnique({
+    where: { id: seriesId },
+    include: {
+      consultations: {
+        include: {
+          assignedManager: { select: pickUserFields },
+        },
+        orderBy: { recurringOccurrence: 'asc' },
+      },
+      exceptions: {
+        orderBy: { occurrenceIndex: 'asc' },
+      },
+    },
+  });
+
+  if (!series) throw new AppError(404, 'Recurring series not found');
+  if (!isAdminRole(req.user.role)) {
+    const hasAccess = series.consultations.some((item) => item.assignedManagerId === req.user.id);
+    if (!hasAccess) throw new AppError(403, 'Forbidden');
+  }
+
+  res.json(series);
+}));
+
+app.post('/api/admin/calendar/recurring/exception', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(recurringExceptionSchema), asyncHandler(async (req, res) => {
+  if (!canWriteConsultations(req.user.role)) throw new AppError(403, 'Forbidden');
+  const { seriesId, occurrenceIndex, reason } = req.body;
+  const series = await prisma.recurringSeries.findUnique({
+    where: { id: seriesId },
+    include: { consultations: true },
+  });
+  if (!series) throw new AppError(404, 'Recurring series not found');
+
+  if (!isAdminRole(req.user.role)) {
+    const hasAccess = series.consultations.some((item) => item.assignedManagerId === req.user.id);
+    if (!hasAccess) throw new AppError(403, 'Forbidden');
+  }
+
+  const consultationToCancel = series.consultations.find((item) => item.recurringOccurrence === occurrenceIndex);
+  if (consultationToCancel) {
+    await prisma.consultation.update({
+      where: { id: consultationToCancel.id },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  const existingException = await prisma.recurringException.findFirst({
+    where: {
+      recurringSeriesId: seriesId,
+      occurrenceIndex,
+    },
+    select: { id: true },
+  });
+
+  const exception = existingException
+    ? await prisma.recurringException.update({
+        where: { id: existingException.id },
+        data: {
+          action: 'SKIP',
+          reason: reason || 'Skipped by manager',
+          consultationId: consultationToCancel?.id || null,
+        },
+      })
+    : await prisma.recurringException.create({
+        data: {
+          recurringSeriesId: seriesId,
+          occurrenceIndex,
+          action: 'SKIP',
+          reason: reason || 'Skipped by manager',
+          consultationId: consultationToCancel?.id || null,
+        },
+      });
+
+  await logAudit({
+    actorUserId: req.user.id,
+    consultationId: consultationToCancel?.id || null,
+    entityType: 'RecurringSeries',
+    entityId: seriesId,
+    action: 'ADD_RECURRING_EXCEPTION',
+    metadata: {
+      occurrenceIndex,
+      reason: reason || 'Skipped by manager',
+    },
+  });
+
+  res.status(201).json({
+    ok: true,
+    exception,
+    cancelledConsultationId: consultationToCancel?.id || null,
   });
 }));
 
@@ -2451,6 +2994,7 @@ app.get('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), asyncHa
 }));
 
 app.post('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), validateBody(blogPostCreateSchema), asyncHandler(async (req, res) => {
+  if (!canManageContent(req.user.role)) throw new AppError(403, 'Forbidden');
   const { title, slug, excerpt, content, coverImage, category, tags, status, publishedAt } = req.body;
   const normalizedSlug = await resolveUniqueBlogSlug(slug || title);
 
@@ -2489,6 +3033,7 @@ app.post('/api/admin/blog/posts', authMiddleware, requireRole(['ADMIN']), valida
 }));
 
 app.patch('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), validateBody(blogPostPatchSchema), asyncHandler(async (req, res) => {
+  if (!canManageContent(req.user.role)) throw new AppError(403, 'Forbidden');
   const { id } = req.params;
   const before = await prisma.blogPost.findUnique({ where: { id } });
   if (!before) throw new AppError(404, 'Blog post not found');
@@ -2540,6 +3085,7 @@ app.patch('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), v
 }));
 
 app.delete('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
+  if (!canManageContent(req.user.role)) throw new AppError(403, 'Forbidden');
   const { id } = req.params;
   const before = await prisma.blogPost.findUnique({ where: { id } });
   if (!before) throw new AppError(404, 'Blog post not found');
@@ -2556,7 +3102,7 @@ app.delete('/api/admin/blog/posts/:id', authMiddleware, requireRole(['ADMIN']), 
   res.status(204).end();
 }));
 
-app.get('/api/admin/tasks', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/tasks', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const { status, managerId } = req.query;
   const where = {
     ...getTaskRoleFilter(req.user),
@@ -2661,7 +3207,7 @@ app.patch('/api/admin/tasks/:id', authMiddleware, requireRole(['ADMIN', 'MANAGER
   res.json(task);
 }));
 
-app.get('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const { folder, consultationId, search, includeArchived } = req.query;
 
   const where = {
@@ -2701,7 +3247,8 @@ app.get('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER']
   })));
 }));
 
-app.post('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(documentCreateSchema), asyncHandler(async (req, res) => {
+app.post('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT']), validateBody(documentCreateSchema), asyncHandler(async (req, res) => {
+  if (!canManageDocuments(req.user.role)) throw new AppError(403, 'Forbidden');
   const { title, folder, fileName, mimeType, fileSize, contentBase64, externalUrl, consultationId, documentGroupId } = req.body;
 
   if (!contentBase64 && !externalUrl) {
@@ -2755,7 +3302,8 @@ app.post('/api/admin/documents', authMiddleware, requireRole(['ADMIN', 'MANAGER'
   res.status(201).json({ ...document, contentBase64: null });
 }));
 
-app.patch('/api/admin/documents/:id', authMiddleware, requireRole(['ADMIN', 'MANAGER']), validateBody(documentPatchSchema), asyncHandler(async (req, res) => {
+app.patch('/api/admin/documents/:id', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT']), validateBody(documentPatchSchema), asyncHandler(async (req, res) => {
+  if (!canManageDocuments(req.user.role)) throw new AppError(403, 'Forbidden');
   const { id } = req.params;
   const before = await prisma.clientDocument.findUnique({ where: { id } });
   if (!before) throw new AppError(404, 'Document not found');
@@ -2788,7 +3336,7 @@ app.patch('/api/admin/documents/:id', authMiddleware, requireRole(['ADMIN', 'MAN
   res.json({ ...document, contentBase64: null });
 }));
 
-app.get('/api/admin/documents/:id/versions', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/documents/:id/versions', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const current = await prisma.clientDocument.findUnique({ where: { id }, select: { documentGroupId: true } });
   if (!current) throw new AppError(404, 'Document not found');
@@ -2804,7 +3352,7 @@ app.get('/api/admin/documents/:id/versions', authMiddleware, requireRole(['ADMIN
   res.json(versions.map((item) => ({ ...item, contentBase64: null })));
 }));
 
-app.get('/api/admin/documents/:id/download', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/documents/:id/download', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const document = await prisma.clientDocument.findUnique({ where: { id } });
   if (!document) throw new AppError(404, 'Document not found');
@@ -2884,7 +3432,7 @@ app.post('/api/reviews', validateBody(reviewSchema), asyncHandler(async (req, re
 }));
 
 // Admin: list all reviews (incl. pending)
-app.get('/api/admin/reviews', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
+app.get('/api/admin/reviews', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'VIEWER']), asyncHandler(async (req, res) => {
   const reviews = await prisma.review.findMany({ orderBy: { createdAt: 'desc' } });
   res.json(reviews);
 }));

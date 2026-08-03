@@ -201,6 +201,8 @@ export const apiClient = {
       analytics: async () => requestJson('/api/admin/payments/analytics'),
       markPaid: async (consultationId) => request(`/api/admin/payments/${consultationId}/mark-paid`, { method: 'POST' }),
       invoiceUrl: (consultationId) => `${API_URL}/api/admin/payments/${consultationId}/invoice.pdf`,
+      receiptUrl: (consultationId) => `${API_URL}/api/admin/payments/${consultationId}/receipt.pdf`,
+      contractUrl: (consultationId) => `${API_URL}/api/admin/payments/${consultationId}/contract.pdf`,
     },
     pipeline: {
       getPreferences: async () => requestJson('/api/admin/pipeline/preferences'),
@@ -255,6 +257,15 @@ export const apiClient = {
     },
     calendar: {
       createRecurring: async (payload) => request('/api/admin/calendar/recurring', { method: 'POST', body: JSON.stringify(payload) }),
+      recurringSeries: async (seriesId) => requestJson(`/api/admin/calendar/recurring/${seriesId}`),
+      addRecurringException: async (payload) => request('/api/admin/calendar/recurring/exception', { method: 'POST', body: JSON.stringify(payload) }),
+      syncProviders: async () => requestJson('/api/admin/calendar/sync/providers'),
+      googleConnectUrl: async () => requestJson('/api/admin/calendar/sync/google/connect-url'),
+      pushToProvider: async (payload) => request('/api/admin/calendar/sync/push', { method: 'POST', body: JSON.stringify(payload) }),
+    },
+    ai: {
+      scenarios: async () => requestJson('/api/admin/ai/scenarios'),
+      run: async (payload) => request('/api/admin/ai/run', { method: 'POST', body: JSON.stringify(payload) }),
     },
   }
 };

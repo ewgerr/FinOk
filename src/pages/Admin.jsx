@@ -13,7 +13,7 @@ import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartToo
 import { useAuth } from "@/lib/AuthContext";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical, Inbox, Workflow, FileText } from "lucide-react";
+import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical, Inbox, Workflow, FileText, Bot, Link2 } from "lucide-react";
 
 const statusOptions = ["", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const typeOptions = ["", "FREE", "PAID"];
@@ -28,6 +28,7 @@ const ADMIN_TAB_SHORTCUT_ORDER = [
   "payments",
   "inbox",
   "automations",
+  "ai",
   "calendar",
   "documents",
   "crm",
@@ -43,6 +44,10 @@ const ROLE_CAPABILITIES = {
     manageReviews: true,
     managePayments: true,
     runAutomations: true,
+    sendInbox: true,
+    manageCalendar: true,
+    runAI: true,
+    manageDocuments: true,
   },
   ADMIN: {
     manageWorkers: true,
@@ -51,6 +56,10 @@ const ROLE_CAPABILITIES = {
     manageReviews: true,
     managePayments: true,
     runAutomations: true,
+    sendInbox: true,
+    manageCalendar: true,
+    runAI: true,
+    manageDocuments: true,
   },
   MANAGER: {
     manageWorkers: false,
@@ -59,6 +68,34 @@ const ROLE_CAPABILITIES = {
     manageReviews: true,
     managePayments: true,
     runAutomations: true,
+    sendInbox: true,
+    manageCalendar: true,
+    runAI: true,
+    manageDocuments: true,
+  },
+  ACCOUNTANT: {
+    manageWorkers: false,
+    viewAudit: false,
+    manageBlog: false,
+    manageReviews: false,
+    managePayments: true,
+    runAutomations: false,
+    sendInbox: false,
+    manageCalendar: false,
+    runAI: true,
+    manageDocuments: false,
+  },
+  VIEWER: {
+    manageWorkers: false,
+    viewAudit: false,
+    manageBlog: false,
+    manageReviews: false,
+    managePayments: false,
+    runAutomations: false,
+    sendInbox: false,
+    manageCalendar: false,
+    runAI: true,
+    manageDocuments: false,
   },
 };
 
@@ -348,7 +385,7 @@ function PremiumKpiCard({ title, value, icon: Icon, percentage, trend, todayValu
 export default function Admin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const capabilities = ROLE_CAPABILITIES[user?.role] || ROLE_CAPABILITIES.MANAGER;
+  const capabilities = ROLE_CAPABILITIES[user?.role] || ROLE_CAPABILITIES.VIEWER;
   const isAdminRole = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const [activeTab, setActiveTab] = useState("dashboard");
   const [filters, setFilters] = useState({ consultationType: "", status: "", confirmationType: "", search: "" });
@@ -406,6 +443,13 @@ export default function Admin() {
   const [inboxFilter, setInboxFilter] = useState({ channel: "", status: "", search: "" });
   const [inboxForm, setInboxForm] = useState({ consultationId: "", channel: "email", subject: "", message: "", recipient: "" });
   const [automationForm, setAutomationForm] = useState({ templateKey: "reminder-24h", consultationId: "" });
+  const [aiForm, setAiForm] = useState({ scenario: "client-summary", consultationId: "", input: "" });
+  const [aiResult, setAiResult] = useState(null);
+  const [calendarSyncForm, setCalendarSyncForm] = useState({ provider: "google", consultationId: "" });
+  const [calendarSyncResult, setCalendarSyncResult] = useState(null);
+  const [googleConnectData, setGoogleConnectData] = useState(null);
+  const [selectedRecurringSeriesId, setSelectedRecurringSeriesId] = useState("");
+  const [recurringExceptionForm, setRecurringExceptionForm] = useState({ occurrenceIndex: 2, reason: "" });
 
   const statsQuery = useQuery({
     queryKey: ["admin-stats"],
@@ -484,7 +528,24 @@ export default function Admin() {
   const automationTemplatesQuery = useQuery({
     queryKey: ["admin-automation-templates"],
     queryFn: () => apiClient.admin.automations.templates(),
-    enabled: capabilities.runAutomations,
+    enabled: Boolean(user),
+  });
+
+  const aiScenariosQuery = useQuery({
+    queryKey: ["admin-ai-scenarios"],
+    queryFn: () => apiClient.admin.ai.scenarios(),
+    enabled: capabilities.runAI,
+  });
+
+  const calendarSyncProvidersQuery = useQuery({
+    queryKey: ["admin-calendar-sync-providers"],
+    queryFn: () => apiClient.admin.calendar.syncProviders(),
+  });
+
+  const recurringSeriesQuery = useQuery({
+    queryKey: ["admin-recurring-series", selectedRecurringSeriesId],
+    queryFn: () => apiClient.admin.calendar.recurringSeries(selectedRecurringSeriesId),
+    enabled: Boolean(selectedRecurringSeriesId),
   });
 
   const documentVersionsQuery = useQuery({
@@ -674,6 +735,36 @@ export default function Admin() {
     },
   });
 
+  const runAIMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.ai.run(payload),
+    onSuccess: (result) => {
+      setAiResult(result);
+    },
+    onError: (error) => {
+      alert(`AI сценарій не виконано. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const fetchGoogleConnectMutation = useMutation({
+    mutationFn: () => apiClient.admin.calendar.googleConnectUrl(),
+    onSuccess: (result) => {
+      setGoogleConnectData(result);
+    },
+    onError: (error) => {
+      alert(`Не вдалося отримати посилання підключення. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const pushCalendarSyncMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.calendar.pushToProvider(payload),
+    onSuccess: (result) => {
+      setCalendarSyncResult(result);
+    },
+    onError: (error) => {
+      alert(`Синхронізацію не виконано. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
   const createRecurringMutation = useMutation({
     mutationFn: (payload) => apiClient.admin.calendar.createRecurring(payload),
     onSuccess: async () => {
@@ -684,6 +775,21 @@ export default function Admin() {
     },
     onError: (error) => {
       alert(`Не вдалося створити серію подій. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const addRecurringExceptionMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.calendar.addRecurringException(payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-consultations-feed"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-recurring-series", selectedRecurringSeriesId] }),
+      ]);
+      setRecurringExceptionForm((prev) => ({ ...prev, reason: "" }));
+    },
+    onError: (error) => {
+      alert(`Не вдалося додати виключення серії. ${error?.body || "Спробуйте ще раз."}`);
     },
   });
 
@@ -700,6 +806,9 @@ export default function Admin() {
   const documents = documentsQuery.data || [];
   const inboxItems = inboxQuery.data || [];
   const automationTemplates = automationTemplatesQuery.data || [];
+  const aiScenarios = aiScenariosQuery.data || [];
+  const calendarSyncProviders = calendarSyncProvidersQuery.data?.providers || [];
+  const recurringSeries = recurringSeriesQuery.data || null;
   const paymentAnalytics = paymentAnalyticsQuery.data || { overall: { averageCheck: 0, totalPaid: 0, paidOrdersCount: 0, paidClientsCount: 0 }, perClient: [] };
   const analytics = stats.analytics || {};
 
@@ -1297,6 +1406,19 @@ export default function Admin() {
       .sort((a, b) => a.start - b.start);
   }, [consultations]);
 
+  const recurringSeriesCandidates = useMemo(() => {
+    const map = new Map();
+    calendarEvents.forEach((item) => {
+      if (!item.recurringSeriesId) return;
+      if (map.has(item.recurringSeriesId)) return;
+      map.set(item.recurringSeriesId, {
+        seriesId: item.recurringSeriesId,
+        label: `${item.firstName} ${item.lastName || ""} · ${item.email}`.trim(),
+      });
+    });
+    return Array.from(map.values());
+  }, [calendarEvents]);
+
   const calendarItems = useMemo(() => {
     return calendarEvents.filter((item) => item.dateKey === selectedDateKey);
   }, [calendarEvents, selectedDateKey]);
@@ -1391,6 +1513,9 @@ export default function Admin() {
       queryClient.invalidateQueries({ queryKey: ["admin-documents"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-inbox"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-automation-templates"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-ai-scenarios"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-calendar-sync-providers"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-recurring-series"] }),
     ]);
   };
 
@@ -1557,6 +1682,10 @@ export default function Admin() {
   };
 
   const applyCalendarDraft = (event) => {
+    if (!capabilities.manageCalendar) {
+      alert("Недостатньо прав для редагування календаря");
+      return;
+    }
     const draft = calendarDrafts[event.id] || ensureCalendarDraft(event);
     const date = draft.date || event.start.toISOString().slice(0, 10);
     const time = draft.time || event.start.toTimeString().slice(0, 5);
@@ -1581,6 +1710,7 @@ export default function Admin() {
   };
 
   const onCalendarDragEnd = (result) => {
+    if (!capabilities.manageCalendar) return;
     if (!result.destination) return;
     const draggableId = result.draggableId || "";
     if (!draggableId.startsWith("cal-")) return;
@@ -1698,6 +1828,10 @@ export default function Admin() {
 
   const submitDocument = (e) => {
     e.preventDefault();
+    if (!capabilities.manageDocuments) {
+      alert("Недостатньо прав для керування документами");
+      return;
+    }
     if (!documentForm.title.trim()) {
       alert("Вкажіть назву документа");
       return;
@@ -1723,6 +1857,10 @@ export default function Admin() {
 
   const submitInboxMessage = (e) => {
     e.preventDefault();
+    if (!capabilities.sendInbox) {
+      alert("Недостатньо прав для надсилання повідомлень");
+      return;
+    }
     if (!inboxForm.message.trim()) {
       alert("Вкажіть текст повідомлення");
       return;
@@ -1746,6 +1884,52 @@ export default function Admin() {
     runAutomationMutation.mutate({
       templateKey: automationForm.templateKey,
       consultationId: automationForm.consultationId || null,
+    });
+  };
+
+  const runAiScenario = (e) => {
+    e.preventDefault();
+    if (!capabilities.runAI) {
+      alert("Недостатньо прав для AI модулю");
+      return;
+    }
+    runAIMutation.mutate({
+      scenario: aiForm.scenario,
+      consultationId: aiForm.consultationId || null,
+      input: aiForm.input || null,
+    });
+  };
+
+  const submitCalendarSync = (e) => {
+    e.preventDefault();
+    if (!capabilities.manageCalendar) {
+      alert("Недостатньо прав для синхронізації календаря");
+      return;
+    }
+    if (!calendarSyncForm.consultationId) {
+      alert("Оберіть консультацію для синхронізації");
+      return;
+    }
+    pushCalendarSyncMutation.mutate({
+      provider: calendarSyncForm.provider,
+      consultationId: calendarSyncForm.consultationId,
+    });
+  };
+
+  const submitRecurringException = (e) => {
+    e.preventDefault();
+    if (!capabilities.manageCalendar) {
+      alert("Недостатньо прав для керування серіями");
+      return;
+    }
+    if (!selectedRecurringSeriesId) {
+      alert("Оберіть серію");
+      return;
+    }
+    addRecurringExceptionMutation.mutate({
+      seriesId: selectedRecurringSeriesId,
+      occurrenceIndex: Number(recurringExceptionForm.occurrenceIndex || 0),
+      reason: recurringExceptionForm.reason || null,
     });
   };
 
@@ -1842,6 +2026,7 @@ export default function Admin() {
             <TabsTrigger value="payments">Платежі</TabsTrigger>
             <TabsTrigger value="inbox">Inbox</TabsTrigger>
             <TabsTrigger value="automations">Automation</TabsTrigger>
+            <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
             <TabsTrigger value="calendar">Календар</TabsTrigger>
             <TabsTrigger value="documents">Документи</TabsTrigger>
@@ -2665,10 +2850,26 @@ export default function Admin() {
                         >
                           <FileText className="w-4 h-4 mr-1" /> Invoice PDF
                         </a>
+                        <a
+                          href={apiClient.admin.payments.receiptUrl(payment.consultationId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
+                        >
+                          <FileText className="w-4 h-4 mr-1" /> Receipt PDF
+                        </a>
+                        <a
+                          href={apiClient.admin.payments.contractUrl(payment.consultationId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
+                        >
+                          <FileText className="w-4 h-4 mr-1" /> Contract PDF
+                        </a>
                         <Button
                           size="sm"
                           className="bg-green-500 text-white hover:bg-green-600"
-                          disabled={payment.paymentStatus === "PAID" || markPaidMutation.isPending}
+                          disabled={payment.paymentStatus === "PAID" || markPaidMutation.isPending || !capabilities.managePayments}
                           onClick={() => markPaidMutation.mutate(payment.consultationId)}
                         >
                           {payment.paymentStatus === "PAID" ? "Оплачено" : "Позначити як оплачено"}
@@ -2732,6 +2933,8 @@ export default function Admin() {
                       <SelectItem value="email">Email</SelectItem>
                       <SelectItem value="telegram">Telegram</SelectItem>
                       <SelectItem value="sms">SMS</SelectItem>
+                      <SelectItem value="instagram">Instagram</SelectItem>
+                      <SelectItem value="facebook">Facebook</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select
@@ -2770,6 +2973,8 @@ export default function Admin() {
                         <SelectItem value="email">Email</SelectItem>
                         <SelectItem value="telegram">Telegram</SelectItem>
                         <SelectItem value="sms">SMS</SelectItem>
+                        <SelectItem value="instagram">Instagram</SelectItem>
+                        <SelectItem value="facebook">Facebook</SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
@@ -2789,7 +2994,7 @@ export default function Admin() {
                     onChange={(e) => setInboxForm((prev) => ({ ...prev, message: e.target.value }))}
                     required
                   />
-                  <Button type="submit" disabled={inboxSendMutation.isPending}>
+                  <Button type="submit" disabled={inboxSendMutation.isPending || !capabilities.sendInbox}>
                     {inboxSendMutation.isPending ? "Надсилання..." : "Надіслати"}
                   </Button>
                 </form>
@@ -2847,7 +3052,7 @@ export default function Admin() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button type="submit" disabled={runAutomationMutation.isPending}>
+                  <Button type="submit" disabled={runAutomationMutation.isPending || !capabilities.runAutomations}>
                     {runAutomationMutation.isPending ? "Виконання..." : "Run now"}
                   </Button>
                 </form>
@@ -2862,6 +3067,75 @@ export default function Admin() {
                   ))}
                   {!automationTemplates.length && <p className="text-sm text-muted-foreground">Шаблони автоматизацій недоступні.</p>}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ai" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> AI workspace</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <form onSubmit={runAiScenario} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 rounded-lg border border-border p-4 bg-muted/20">
+                  <Select value={aiForm.scenario} onValueChange={(value) => setAiForm((prev) => ({ ...prev, scenario: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Сценарій" /></SelectTrigger>
+                    <SelectContent>
+                      {aiScenarios.map((scenario) => (
+                        <SelectItem key={scenario.key} value={scenario.key}>{scenario.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={aiForm.consultationId || "none"}
+                    onValueChange={(value) => setAiForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Консультація (опц.)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Без прив'язки</SelectItem>
+                      {consultations.slice(0, 120).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName || ""} · {c.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={aiForm.input}
+                    onChange={(e) => setAiForm((prev) => ({ ...prev, input: e.target.value }))}
+                    placeholder="Додатковий prompt (опц.)"
+                  />
+                  <Button type="submit" disabled={runAIMutation.isPending || !capabilities.runAI}>
+                    {runAIMutation.isPending ? "Виконання..." : "Run scenario"}
+                  </Button>
+                </form>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {aiScenarios.map((scenario) => (
+                    <div key={scenario.key} className="rounded-lg border border-border bg-white p-3">
+                      <p className="font-medium text-sm">{scenario.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{scenario.description}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {aiResult ? (
+                  <div className="rounded-xl border border-border bg-white p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <p className="font-medium">Result: {aiResult.scenario}</p>
+                      <Badge variant="outline">Confidence: {Math.round(Number(aiResult.confidence || 0) * 100)}%</Badge>
+                    </div>
+                    {aiResult.title ? <p className="text-sm font-medium">{aiResult.title}</p> : null}
+                    <p className="text-sm text-foreground/90 whitespace-pre-wrap">{aiResult.output}</p>
+                    {Array.isArray(aiResult.actions) && aiResult.actions.length ? (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {aiResult.actions.map((action) => (
+                          <Badge key={action} variant="secondary">{action}</Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Оберіть сценарій і запустіть AI-аналіз.</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -3140,11 +3414,13 @@ export default function Admin() {
                                   type="date"
                                   value={draft.date}
                                   onChange={(e) => upsertCalendarDraft(item, { date: e.target.value })}
+                                  disabled={!capabilities.manageCalendar}
                                 />
                                 <Input
                                   type="time"
                                   value={draft.time}
                                   onChange={(e) => upsertCalendarDraft(item, { time: e.target.value })}
+                                  disabled={!capabilities.manageCalendar}
                                 />
                                 <Input
                                   type="number"
@@ -3153,12 +3429,13 @@ export default function Admin() {
                                   step={15}
                                   value={draft.durationMinutes}
                                   onChange={(e) => upsertCalendarDraft(item, { durationMinutes: Number(e.target.value) || 45 })}
+                                  disabled={!capabilities.manageCalendar}
                                 />
                                 <Button
                                   size="sm"
                                   className="w-full"
                                   onClick={() => applyCalendarDraft(item)}
-                                  disabled={updateMutation.isPending}
+                                  disabled={updateMutation.isPending || !capabilities.manageCalendar}
                                 >
                                   {updateMutation.isPending ? "Збереження..." : "Зберегти"}
                                 </Button>
@@ -3170,6 +3447,7 @@ export default function Admin() {
                                     type="checkbox"
                                     checked={Boolean(draft.recurringWeekly)}
                                     onChange={(e) => upsertCalendarDraft(item, { recurringWeekly: e.target.checked })}
+                                    disabled={!capabilities.manageCalendar}
                                   />
                                   Щотижнева серія
                                 </label>
@@ -3179,7 +3457,7 @@ export default function Admin() {
                                   max={24}
                                   value={draft.recurringCount || 1}
                                   onChange={(e) => upsertCalendarDraft(item, { recurringCount: Number(e.target.value) || 1 })}
-                                  disabled={!draft.recurringWeekly}
+                                  disabled={!draft.recurringWeekly || !capabilities.manageCalendar}
                                 />
                                 <p className="text-xs text-muted-foreground">Кількість подій у серії</p>
                               </div>
@@ -3286,6 +3564,133 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5" /> Calendar sync (Google-ready)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {calendarSyncProviders.map((provider) => (
+                    <div key={provider.key} className="rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="font-medium text-sm">{provider.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{provider.enabled ? "Configured" : "Not configured"}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchGoogleConnectMutation.mutate()}
+                    disabled={fetchGoogleConnectMutation.isPending || !capabilities.manageCalendar}
+                  >
+                    {fetchGoogleConnectMutation.isPending ? "Завантаження..." : "Отримати connect URL"}
+                  </Button>
+                  {googleConnectData?.enabled && googleConnectData?.connectUrl ? (
+                    <a
+                      href={googleConnectData.connectUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
+                    >
+                      Open Google OAuth
+                    </a>
+                  ) : null}
+                </div>
+
+                <form onSubmit={submitCalendarSync} className="grid grid-cols-1 md:grid-cols-3 gap-2 rounded-lg border border-border p-4 bg-muted/20">
+                  <Select
+                    value={calendarSyncForm.consultationId || "none"}
+                    onValueChange={(value) => setCalendarSyncForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Консультація" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Оберіть консультацію</SelectItem>
+                      {consultations.slice(0, 120).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName || ""} · {c.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={calendarSyncForm.provider} onValueChange={(value) => setCalendarSyncForm((prev) => ({ ...prev, provider: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="google">Google Calendar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="submit" disabled={pushCalendarSyncMutation.isPending || !capabilities.manageCalendar}>
+                    {pushCalendarSyncMutation.isPending ? "Sync..." : "Push event"}
+                  </Button>
+                </form>
+
+                {calendarSyncResult?.message ? (
+                  <p className="text-sm text-muted-foreground">{calendarSyncResult.message}</p>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recurring series exceptions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <Select
+                    value={selectedRecurringSeriesId || "none"}
+                    onValueChange={(value) => setSelectedRecurringSeriesId(value === "none" ? "" : value)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Оберіть серію" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Серія не обрана</SelectItem>
+                      {recurringSeriesCandidates.map((series) => (
+                        <SelectItem key={series.seriesId} value={series.seriesId}>{series.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <form onSubmit={submitRecurringException} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto] gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={recurringExceptionForm.occurrenceIndex}
+                      onChange={(e) => setRecurringExceptionForm((prev) => ({ ...prev, occurrenceIndex: Number(e.target.value) || 1 }))}
+                    />
+                    <Input
+                      value={recurringExceptionForm.reason}
+                      onChange={(e) => setRecurringExceptionForm((prev) => ({ ...prev, reason: e.target.value }))}
+                      placeholder="Причина (опц.)"
+                    />
+                    <Button type="submit" disabled={addRecurringExceptionMutation.isPending || !capabilities.manageCalendar}>
+                      {addRecurringExceptionMutation.isPending ? "Збереження..." : "Skip occurrence"}
+                    </Button>
+                  </form>
+                </div>
+
+                {recurringSeries ? (
+                  <div className="rounded-lg border border-border overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40 text-left">
+                        <tr>
+                          <th className="p-3 font-medium">Occurrence</th>
+                          <th className="p-3 font-medium">Дата</th>
+                          <th className="p-3 font-medium">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recurringSeries.consultations?.map((item) => (
+                          <tr key={item.id} className="border-t border-border">
+                            <td className="p-3">#{item.recurringOccurrence || 1}</td>
+                            <td className="p-3">{formatDateTime(item.scheduledAt || item.preferredDateTime)}</td>
+                            <td className="p-3"><Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Оберіть серію, щоб переглянути події й виключення.</p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="documents" className="space-y-4">
@@ -3351,7 +3756,7 @@ export default function Admin() {
                       ) : null}
                     </div>
 
-                    <Button type="submit" className="w-full" disabled={createDocumentMutation.isPending}>
+                    <Button type="submit" className="w-full" disabled={createDocumentMutation.isPending || !capabilities.manageDocuments}>
                       {createDocumentMutation.isPending ? "Завантаження..." : "Зберегти документ"}
                     </Button>
                   </form>

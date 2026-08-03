@@ -34,6 +34,7 @@ model User {
   auditLogs     AuditLog[]
   notifications NotificationLog[]
   uploadedDocuments ClientDocument[] @relation("DocumentUploadedBy")
+  createdRecurringSeries RecurringSeries[] @relation("RecurringSeriesCreatedBy")
 
   @@map("users")
 }
@@ -103,11 +104,16 @@ model Consultation {
   // Relations
   order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   orderId       String?
+  recurringSeriesId String?
+  recurringSeries   RecurringSeries? @relation(fields: [recurringSeriesId], references: [id], onDelete: SetNull)
+  recurringOccurrence Int?
+  recurringException  RecurringException?
   notifications NotificationLog[]
   auditLogs     AuditLog[]
   tasks         Task[]
   documents     ClientDocument[]
 
+  @@index([recurringSeriesId])
   @@map("consultations")
 }
 
@@ -235,6 +241,38 @@ model ClientDocument {
   @@index([consultationId])
   @@index([folder])
   @@map("client_documents")
+}
+
+model RecurringSeries {
+  id                String   @id @default(cuid())
+  title             String
+  consultationType  ConsultationType
+  intervalDays      Int      @default(7)
+  plannedOccurrences Int     @default(4)
+  startAt           DateTime
+  createdById       String?
+  createdBy         User?    @relation("RecurringSeriesCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  consultations     Consultation[]
+  exceptions        RecurringException[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("recurring_series")
+}
+
+model RecurringException {
+  id               String   @id @default(cuid())
+  recurringSeriesId String
+  recurringSeries  RecurringSeries @relation(fields: [recurringSeriesId], references: [id], onDelete: Cascade)
+  occurrenceIndex  Int
+  action           String   @default("SKIP")
+  reason           String?
+  consultationId   String?  @unique
+  consultation     Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+
+  @@index([recurringSeriesId, occurrenceIndex])
+  @@map("recurring_exceptions")
 }
 
 // Enum для типу консультації
