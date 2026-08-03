@@ -356,6 +356,7 @@ const consultationSchema = z
 const consultationPatchSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED']).optional(),
   scheduledAt: z.string().optional(),
+  estimatedDuration: z.coerce.number().int().positive().max(240).optional(),
   assignedManagerId: z.string().min(1).optional().nullable(),
   internalNotes: z.string().max(4000).optional().nullable(),
 });
@@ -1076,7 +1077,7 @@ app.get('/api/entities/Consultation/:id', authMiddleware, asyncHandler(async (re
 // Update consultation status
 app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consultationPatchSchema), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, scheduledAt, assignedManagerId, internalNotes } = req.body;
+  const { status, scheduledAt, estimatedDuration, assignedManagerId, internalNotes } = req.body;
 
   try {
     const before = await prisma.consultation.findUnique({ where: { id } });
@@ -1097,6 +1098,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
       data: {
         status: nextStatus,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
+        estimatedDuration: Number.isFinite(Number(estimatedDuration)) ? Number(estimatedDuration) : undefined,
         assignedManagerId: assignedManagerId === null ? null : assignedManagerId || undefined,
         internalNotes: internalNotes === null ? null : internalNotes || undefined,
         updatedById: req.user.id,
@@ -1119,7 +1121,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
       action: 'UPDATE',
       beforeState: before,
       afterState: consultation,
-      metadata: { status, scheduledAt, assignedManagerId: nextAssignedManagerId },
+      metadata: { status, scheduledAt, estimatedDuration, assignedManagerId: nextAssignedManagerId },
     });
 
     if (status && status !== before.status) {

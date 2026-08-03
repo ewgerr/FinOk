@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound } from "lucide-react";
+import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 
 const statusOptions = ["", "PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"];
 const typeOptions = ["", "FREE", "PAID"];
@@ -45,7 +45,32 @@ const contactMethodLabel = {
   EMAIL: "Email",
 };
 
-const DEFAULT_PIPELINE_ORDER = { NEW: [], ASSIGNED: [], CLIENT: [], DONE: [] };
+const PIPELINE_KEYS = ["NEW", "PENDING", "CONFIRMED", "PAID", "IN_PROGRESS", "COMPLETED", "CANCELLED", "LOST"];
+const DEFAULT_PIPELINE_ORDER = {
+  NEW: [],
+  PENDING: [],
+  CONFIRMED: [],
+  PAID: [],
+  IN_PROGRESS: [],
+  COMPLETED: [],
+  CANCELLED: [],
+  LOST: [],
+};
+
+const serializePipelineOrderForApi = (order = DEFAULT_PIPELINE_ORDER) => ({
+  NEW: order.NEW || [],
+  ASSIGNED: order.PENDING || [],
+  CLIENT: order.CONFIRMED || [],
+  DONE: order.COMPLETED || [],
+});
+
+const hydratePipelineOrderFromApi = (order) => ({
+  ...DEFAULT_PIPELINE_ORDER,
+  NEW: Array.isArray(order?.NEW) ? order.NEW : [],
+  PENDING: Array.isArray(order?.ASSIGNED) ? order.ASSIGNED : [],
+  CONFIRMED: Array.isArray(order?.CLIENT) ? order.CLIENT : [],
+  COMPLETED: Array.isArray(order?.DONE) ? order.DONE : [],
+});
 
 const formatMoney = (value, currency = "UAH") => `${Number(value || 0).toLocaleString("uk-UA", { maximumFractionDigits: 2 })} ${currency}`;
 
@@ -140,6 +165,87 @@ const getTelegramHref = (item) => {
   return `https://t.me/share/url?text=${encodeURIComponent(buildConfirmationDetails(item))}`;
 };
 
+const statusLabelMap = {
+  PENDING: "Pending",
+  CONFIRMED: "Confirmed",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
+
+const getInitials = (fullName = "") => {
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "CL";
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("");
+};
+
+const getConsultationServiceNames = (item) => {
+  if (!item) return [];
+  if (item.selectedServices) {
+    try {
+      const services = JSON.parse(item.selectedServices);
+      if (Array.isArray(services)) {
+        return services.map((s) => String(s?.name || "").trim()).filter(Boolean);
+      }
+    } catch {
+      // noop
+    }
+  }
+  const fallback = item.serviceName || item.service?.name;
+  return fallback ? [String(fallback)] : [];
+};
+
+const inferClientTags = ({ consultations = [], totalRevenue = 0 }) => {
+  const tags = new Set();
+  const now = Date.now();
+  const first = consultations[consultations.length - 1];
+
+  if (consultations.length > 1) tags.add("Returning Client");
+  else tags.add("New Client");
+
+  if (totalRevenue >= 50000) tags.add("VIP");
+
+  const allText = consultations
+    .flatMap((item) => [
+      ...(getConsultationServiceNames(item) || []),
+      item.description || "",
+    ])
+    .join(" ")
+    .toLowerCase();
+
+  if (allText.includes("грант")) tags.add("Grant");
+  if (allText.includes("облік") || allText.includes("бух")) tags.add("Accounting");
+  if (allText.includes("фоп")) tags.add("FOP");
+  if (allText.includes("тов") || allText.includes("llc")) tags.add("LLC");
+  if (allText.includes("подат")) tags.add("Taxes");
+  if (allText.includes("юрид") || allText.includes("legal")) tags.add("Legal");
+
+  const latest = consultations[0];
+  if (latest?.consultationType === "PAID" && latest?.status === "PENDING") tags.add("Priority");
+
+  const firstCreated = first?.createdAt ? new Date(first.createdAt).getTime() : null;
+  if (firstCreated && now - firstCreated <= 1000 * 60 * 60 * 24 * 30) {
+    tags.add("New Client");
+  }
+
+  return Array.from(tags);
+};
+
+const clientTagClass = (tag) => {
+  const palette = {
+    VIP: "bg-amber-100 text-amber-800 border-amber-200",
+    Grant: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    Accounting: "bg-sky-100 text-sky-800 border-sky-200",
+    FOP: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    LLC: "bg-violet-100 text-violet-800 border-violet-200",
+    Taxes: "bg-rose-100 text-rose-800 border-rose-200",
+    Legal: "bg-slate-100 text-slate-800 border-slate-200",
+    Priority: "bg-red-100 text-red-800 border-red-200",
+    "New Client": "bg-lime-100 text-lime-800 border-lime-200",
+    "Returning Client": "bg-cyan-100 text-cyan-800 border-cyan-200",
+  };
+  return palette[tag] || "bg-muted text-foreground border-border";
+};
+
 function StatCard({ title, value, icon: Icon, subtitle }) {
   return (
     <Card className="shadow-sm">
@@ -157,8 +263,49 @@ function StatCard({ title, value, icon: Icon, subtitle }) {
   );
 }
 
+function PremiumKpiCard({ title, value, icon: Icon, percentage, trend, todayValue, monthlyComparison }) {
+  const trendUp = trend >= 0;
+  const trendLabel = `${trendUp ? "+" : ""}${Number(trend || 0).toFixed(1)}%`;
+
+  return (
+    <Card className="border-border/70 bg-white/90 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
+            <p className="text-2xl font-semibold mt-2">{value}</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <Icon className="w-5 h-5" aria-hidden="true" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs">
+          <div className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${trendUp ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+            {trendUp ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+            {trendLabel}
+          </div>
+          <span className="text-muted-foreground">Частка: {percentage}</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+          <div className="rounded-lg border border-border/70 px-2 py-2 bg-muted/20">
+            <p className="text-muted-foreground">Сьогодні</p>
+            <p className="font-medium mt-1">{todayValue}</p>
+          </div>
+          <div className="rounded-lg border border-border/70 px-2 py-2 bg-muted/20">
+            <p className="text-muted-foreground">Місяць</p>
+            <p className="font-medium mt-1">{monthlyComparison}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Admin() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [filters, setFilters] = useState({ consultationType: "", status: "", confirmationType: "", search: "" });
   const [workerForm, setWorkerForm] = useState({
     firstName: "",
@@ -169,6 +316,8 @@ export default function Admin() {
     password: "",
   });
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState("DAY");
+  const [calendarDrafts, setCalendarDrafts] = useState({});
   const [taskForm, setTaskForm] = useState({
     title: "",
     description: "",
@@ -395,12 +544,7 @@ export default function Admin() {
     if (isPipelineOrderInitialized) return;
     const serverOrder = pipelinePreferencesQuery.data?.order;
     if (!serverOrder) return;
-    setPipelineOrder({
-      NEW: Array.isArray(serverOrder.NEW) ? serverOrder.NEW : [],
-      ASSIGNED: Array.isArray(serverOrder.ASSIGNED) ? serverOrder.ASSIGNED : [],
-      CLIENT: Array.isArray(serverOrder.CLIENT) ? serverOrder.CLIENT : [],
-      DONE: Array.isArray(serverOrder.DONE) ? serverOrder.DONE : [],
-    });
+    setPipelineOrder(hydratePipelineOrderFromApi(serverOrder));
     setIsPipelineOrderInitialized(true);
   }, [pipelinePreferencesQuery.data, isPipelineOrderInitialized]);
 
@@ -462,6 +606,124 @@ export default function Admin() {
     return map;
   }, [paymentAnalytics.perClient]);
 
+  const tasksByConsultationId = useMemo(() => {
+    const map = new Map();
+    for (const task of tasks || []) {
+      if (!task?.consultationId) continue;
+      if (!map.has(task.consultationId)) map.set(task.consultationId, []);
+      map.get(task.consultationId).push(task);
+    }
+    return map;
+  }, [tasks]);
+
+  const selectedClientProfile = useMemo(() => {
+    if (!selectedClient) return null;
+
+    const consultations = selectedClient.consultations || [];
+    const consultationIds = new Set(consultations.map((c) => c.id));
+    const relatedPayments = (payments || []).filter((payment) => consultationIds.has(payment.consultationId));
+    const relatedTasks = consultations.flatMap((c) => tasksByConsultationId.get(c.id) || []);
+    const paidPayments = relatedPayments.filter((payment) => payment.paymentStatus === "PAID");
+    const totalRevenue = paidPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+    const latest = consultations[0] || null;
+    const first = consultations[consultations.length - 1] || null;
+    const lastActivityDate = latest?.updatedAt || latest?.createdAt || first?.createdAt || null;
+    const openTasks = relatedTasks.filter((task) => task.status !== "DONE" && task.status !== "CANCELLED").length;
+
+    const timeline = [];
+    if (first) {
+      timeline.push({
+        id: `created-${first.id}`,
+        date: first.createdAt,
+        title: "Client created",
+        description: `Перший запис: ${formatDateTime(first.createdAt)}`,
+      });
+    }
+
+    consultations.forEach((c) => {
+      timeline.push({
+        id: `consultation-${c.id}`,
+        date: c.preferredDateTime || c.createdAt,
+        title: "Consultation",
+        description: `${renderServicesForDisplay(c)} · ${statusLabelMap[c.status] || c.status}`,
+      });
+
+      if (c.assignedManagerId) {
+        timeline.push({
+          id: `assigned-${c.id}`,
+          date: c.updatedAt || c.createdAt,
+          title: "Manager assigned",
+          description: c.assignedManager?.firstName || c.assignedManager?.email || "Manager assigned",
+        });
+      }
+
+      if (c.status === "CONFIRMED") {
+        timeline.push({
+          id: `confirmed-${c.id}`,
+          date: c.confirmedAt || c.updatedAt || c.createdAt,
+          title: "Confirmed",
+          description: "Консультацію підтверджено",
+        });
+      }
+
+      if (c.status === "COMPLETED") {
+        timeline.push({
+          id: `completed-${c.id}`,
+          date: c.updatedAt || c.createdAt,
+          title: "Completed",
+          description: "Консультацію завершено",
+        });
+      }
+    });
+
+    relatedPayments.forEach((payment) => {
+      timeline.push({
+        id: `payment-${payment.consultationId}`,
+        date: payment.paidAt || payment.updatedAt || payment.createdAt || latest?.updatedAt || latest?.createdAt,
+        title: payment.paymentStatus === "PAID" ? "Payment" : "Payment status",
+        description: `${payment.paymentStatus} · ${formatMoney(payment.amount || 0, payment.currency || "UAH")}`,
+      });
+    });
+
+    relatedTasks.forEach((task) => {
+      timeline.push({
+        id: `task-${task.id}`,
+        date: task.updatedAt || task.createdAt,
+        title: "Task updated",
+        description: `${task.title} · ${task.status}`,
+      });
+    });
+
+    timeline.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    const clientScore = Math.min(
+      100,
+      30
+      + consultations.length * 8
+      + paidPayments.length * 15
+      + (latest?.status === "COMPLETED" ? 10 : 0)
+      + (latest?.assignedManagerId ? 10 : 0)
+    );
+
+    return {
+      ...selectedClient,
+      latest,
+      first,
+      relatedPayments,
+      relatedTasks,
+      timeline,
+      totalRevenue,
+      ltv: totalRevenue,
+      clientScore,
+      openTasks,
+      lastActivityDate,
+      tags: inferClientTags({ consultations, totalRevenue }),
+      status: latest?.status || "PENDING",
+      managerName: latest?.assignedManager?.firstName || latest?.assignedManager?.email || "—",
+    };
+  }, [selectedClient, payments, tasksByConsultationId]);
+
   const pipelineServiceOptions = useMemo(() => {
     const map = new Map();
     consultationsFeed
@@ -510,46 +772,78 @@ export default function Admin() {
     });
   }, [consultationsFeed, pipelineManagerFilter, pipelineServiceFilter, pipelineDateFrom, pipelineDateTo]);
 
+  const getPipelineStageForItem = (item) => {
+    const payment = payments.find((p) => p.consultationId === item.id);
+    const hasPaid = payment?.paymentStatus === "PAID";
+    const linkedTasks = tasksByConsultationId.get(item.id) || [];
+    const hasInProgressTask = linkedTasks.some((task) => task.status === "IN_PROGRESS" || task.status === "TODO");
+    const lowerDescription = String(item.description || "").toLowerCase();
+    const hasLostSignal = lowerDescription.includes("lost") || lowerDescription.includes("втрачен") || lowerDescription.includes("відмов");
+
+    if (item.status === "COMPLETED") return "COMPLETED";
+    if (item.status === "CANCELLED") return hasLostSignal ? "LOST" : "CANCELLED";
+
+    if (item.status === "CONFIRMED") {
+      if (hasInProgressTask) return "IN_PROGRESS";
+      if (hasPaid) return "PAID";
+      return "CONFIRMED";
+    }
+
+    if (!item.assignedManagerId) return "NEW";
+    return "PENDING";
+  };
+
   const funnelColumns = useMemo(() => {
     const all = pipelineConsultations;
-    return {
-      NEW: sortBySavedOrder(all.filter((c) => !c.assignedManagerId && c.status === "PENDING"), pipelineOrder.NEW),
-      ASSIGNED: sortBySavedOrder(all.filter((c) => c.assignedManagerId && c.status === "PENDING"), pipelineOrder.ASSIGNED),
-      CLIENT: sortBySavedOrder(all.filter((c) => c.status === "CONFIRMED"), pipelineOrder.CLIENT),
-      DONE: sortBySavedOrder(all.filter((c) => c.status === "COMPLETED"), pipelineOrder.DONE),
-    };
-  }, [pipelineConsultations, pipelineOrder]);
+    const stageBuckets = Object.fromEntries(PIPELINE_KEYS.map((key) => [key, []]));
+
+    all.forEach((item) => {
+      const stage = getPipelineStageForItem(item);
+      if (!stageBuckets[stage]) stageBuckets[stage] = [];
+      stageBuckets[stage].push(item);
+    });
+
+    return Object.fromEntries(
+      PIPELINE_KEYS.map((key) => [key, sortBySavedOrder(stageBuckets[key] || [], pipelineOrder[key] || [])])
+    );
+  }, [pipelineConsultations, pipelineOrder, payments, tasksByConsultationId]);
 
   const pipelineConversions = useMemo(() => {
     const newCount = funnelColumns.NEW.length;
-    const assignedCount = funnelColumns.ASSIGNED.length;
-    const clientCount = funnelColumns.CLIENT.length;
-    const doneCount = funnelColumns.DONE.length;
+    const pendingCount = funnelColumns.PENDING.length;
+    const confirmedCount = funnelColumns.CONFIRMED.length;
+    const paidCount = funnelColumns.PAID.length;
+    const inProgressCount = funnelColumns.IN_PROGRESS.length;
+    const doneCount = funnelColumns.COMPLETED.length;
+    const cancelledCount = funnelColumns.CANCELLED.length;
+    const lostCount = funnelColumns.LOST.length;
 
     const ratio = (next, prev) => (prev ? `${Math.round((next / prev) * 100)}%` : "0%");
 
     return {
       newCount,
-      assignedCount,
-      clientCount,
+      pendingCount,
+      confirmedCount,
+      paidCount,
+      inProgressCount,
       doneCount,
-      newToAssigned: ratio(assignedCount, newCount),
-      assignedToClient: ratio(clientCount, assignedCount),
-      clientToDone: ratio(doneCount, clientCount),
+      cancelledCount,
+      lostCount,
+      newToPending: ratio(pendingCount, newCount),
+      pendingToConfirmed: ratio(confirmedCount + paidCount + inProgressCount, pendingCount),
+      confirmedToPaid: ratio(paidCount, confirmedCount || 1),
+      activeToDone: ratio(doneCount, confirmedCount + paidCount + inProgressCount),
     };
   }, [funnelColumns]);
 
   useEffect(() => {
     const allIds = new Set(consultationsFeed.map((item) => item.id));
-    const nextOrder = {
-      NEW: (pipelineOrder.NEW || []).filter((id) => allIds.has(id)),
-      ASSIGNED: (pipelineOrder.ASSIGNED || []).filter((id) => allIds.has(id)),
-      CLIENT: (pipelineOrder.CLIENT || []).filter((id) => allIds.has(id)),
-      DONE: (pipelineOrder.DONE || []).filter((id) => allIds.has(id)),
-    };
+    const nextOrder = Object.fromEntries(
+      PIPELINE_KEYS.map((key) => [key, (pipelineOrder[key] || []).filter((id) => allIds.has(id))])
+    );
 
     let changed = false;
-    ["NEW", "ASSIGNED", "CLIENT", "DONE"].forEach((key) => {
+    PIPELINE_KEYS.forEach((key) => {
       const ids = funnelColumns[key].map((item) => item.id);
       ids.forEach((id) => {
         if (!nextOrder[key].includes(id)) {
@@ -560,7 +854,7 @@ export default function Admin() {
     });
 
     if (!changed) {
-      changed = ["NEW", "ASSIGNED", "CLIENT", "DONE"].some(
+      changed = PIPELINE_KEYS.some(
         (key) => (nextOrder[key] || []).length !== (pipelineOrder[key] || []).length
       );
     }
@@ -568,7 +862,7 @@ export default function Admin() {
     if (changed) {
       setPipelineOrder(nextOrder);
       if (isPipelineOrderInitialized) {
-        savePipelinePreferencesMutation.mutate(nextOrder);
+        savePipelinePreferencesMutation.mutate(serializePipelineOrderForApi(nextOrder));
       }
     }
   }, [consultationsFeed, funnelColumns, pipelineOrder, isPipelineOrderInitialized]);
@@ -583,17 +877,315 @@ export default function Admin() {
     fill: index % 2 === 0 ? "var(--color-free)" : "var(--color-paid)",
   }));
 
-  const paidShare = useMemo(() => {
-    if (!stats.total) return 0;
-    return Math.round((stats.paidCount / stats.total) * 100);
-  }, [stats]);
+  const dashboardKpis = useMemo(() => {
+    const items = consultationsFeed || [];
+    const total = items.length;
+    const today = new Date();
+
+    const atDate = (value) => {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const startToday = startOfDay(today);
+    const startTomorrow = new Date(startToday);
+    startTomorrow.setDate(startTomorrow.getDate() + 1);
+    const weekStart = new Date(startToday);
+    weekStart.setDate(weekStart.getDate() - 6);
+    const prevWeekStart = new Date(weekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+
+    const inRange = (value, start, end) => value && value >= start && value < end;
+    const pctDiff = (current, previous) => {
+      if (!previous) return current ? 100 : 0;
+      return ((current - previous) / previous) * 100;
+    };
+    const percentOf = (part, whole) => `${whole ? Math.round((part / whole) * 100) : 0}%`;
+
+    const parseConsultationAmount = (item) => {
+      if (item?.selectedServices) {
+        try {
+          const services = JSON.parse(item.selectedServices);
+          if (Array.isArray(services)) {
+            return services.reduce((sum, service) => sum + parseMoneyFromText(service?.price), 0);
+          }
+        } catch {
+          // ignore parse issues
+        }
+      }
+      return parseMoneyFromText(item?.servicePriceText || item?.service?.price || "");
+    };
+
+    const paidItems = items.filter((item) => item.consultationType === "PAID");
+    const pendingItems = items.filter((item) => item.status === "PENDING");
+    const upcomingItems = items.filter((item) => {
+      const d = atDate(item.preferredDateTime || item.scheduledAt);
+      if (!d) return false;
+      return d >= startToday && ["PENDING", "CONFIRMED"].includes(item.status);
+    });
+
+    const monthlyRevenue = items
+      .filter((item) => inRange(atDate(item.createdAt), monthStart, nextMonthStart) && item.consultationType === "PAID")
+      .reduce((sum, item) => sum + parseConsultationAmount(item), 0);
+
+    const prevMonthlyRevenue = items
+      .filter((item) => inRange(atDate(item.createdAt), prevMonthStart, monthStart) && item.consultationType === "PAID")
+      .reduce((sum, item) => sum + parseConsultationAmount(item), 0);
+
+    const weeklyRevenue = items
+      .filter((item) => inRange(atDate(item.createdAt), weekStart, startTomorrow) && item.consultationType === "PAID")
+      .reduce((sum, item) => sum + parseConsultationAmount(item), 0);
+
+    const prevWeeklyRevenue = items
+      .filter((item) => inRange(atDate(item.createdAt), prevWeekStart, weekStart) && item.consultationType === "PAID")
+      .reduce((sum, item) => sum + parseConsultationAmount(item), 0);
+
+    const currentMonthItems = items.filter((item) => inRange(atDate(item.createdAt), monthStart, nextMonthStart));
+    const prevMonthItems = items.filter((item) => inRange(atDate(item.createdAt), prevMonthStart, monthStart));
+    const currentMonthPaid = currentMonthItems.filter((item) => item.consultationType === "PAID").length;
+    const prevMonthPaid = prevMonthItems.filter((item) => item.consultationType === "PAID").length;
+
+    const conversionRate = total ? (paidItems.length / total) * 100 : 0;
+    const prevConversionRate = prevMonthItems.length ? (prevMonthPaid / prevMonthItems.length) * 100 : 0;
+
+    const averageCheck = Number(paymentAnalytics.overall?.averageCheck || 0);
+    const prevAverageCheck = prevMonthPaid ? prevMonthlyRevenue / prevMonthPaid : 0;
+
+    const recentWindowStart = new Date(startToday);
+    recentWindowStart.setDate(recentWindowStart.getDate() - 29);
+    const activeClients = new Set(
+      items
+        .filter((item) => inRange(atDate(item.createdAt), recentWindowStart, startTomorrow))
+        .map((item) => String(item.email || `${item.firstName}_${item.lastName || ""}`).toLowerCase())
+    ).size;
+
+    const firstSeen = new Map();
+    items.forEach((item) => {
+      const key = String(item.email || `${item.firstName}_${item.lastName || ""}`).toLowerCase();
+      const created = atDate(item.createdAt);
+      if (!created) return;
+      if (!firstSeen.has(key) || created < firstSeen.get(key)) {
+        firstSeen.set(key, created);
+      }
+    });
+    const newClients = Array.from(firstSeen.values()).filter((d) => inRange(d, monthStart, nextMonthStart)).length;
+    const prevNewClients = Array.from(firstSeen.values()).filter((d) => inRange(d, prevMonthStart, monthStart)).length;
+
+    const todayCount = items.filter((item) => inRange(atDate(item.createdAt), startToday, startTomorrow)).length;
+    const todayPaid = paidItems.filter((item) => inRange(atDate(item.createdAt), startToday, startTomorrow)).length;
+    const todayPending = pendingItems.filter((item) => inRange(atDate(item.createdAt), startToday, startTomorrow)).length;
+    const todayUpcoming = upcomingItems.filter((item) => {
+      const d = atDate(item.preferredDateTime || item.scheduledAt);
+      return inRange(d, startToday, startTomorrow);
+    }).length;
+
+    return [
+      { title: "Total consultations", value: total, icon: Users, percentage: percentOf(total, total), trend: pctDiff(currentMonthItems.length, prevMonthItems.length), todayValue: todayCount, monthlyComparison: `${currentMonthItems.length} / ${prevMonthItems.length}` },
+      { title: "Paid consultations", value: paidItems.length, icon: Shield, percentage: percentOf(paidItems.length, total), trend: pctDiff(currentMonthPaid, prevMonthPaid), todayValue: todayPaid, monthlyComparison: `${currentMonthPaid} / ${prevMonthPaid}` },
+      { title: "Pending consultations", value: pendingItems.length, icon: Clock3, percentage: percentOf(pendingItems.length, total), trend: pctDiff(currentMonthItems.filter((i) => i.status === "PENDING").length, prevMonthItems.filter((i) => i.status === "PENDING").length), todayValue: todayPending, monthlyComparison: `${currentMonthItems.filter((i) => i.status === "PENDING").length} / ${prevMonthItems.filter((i) => i.status === "PENDING").length}` },
+      { title: "Upcoming consultations", value: upcomingItems.length, icon: CalendarRange, percentage: percentOf(upcomingItems.length, total), trend: pctDiff(currentMonthItems.filter((i) => ["PENDING", "CONFIRMED"].includes(i.status)).length, prevMonthItems.filter((i) => ["PENDING", "CONFIRMED"].includes(i.status)).length), todayValue: todayUpcoming, monthlyComparison: `${currentMonthItems.filter((i) => ["PENDING", "CONFIRMED"].includes(i.status)).length} / ${prevMonthItems.filter((i) => ["PENDING", "CONFIRMED"].includes(i.status)).length}` },
+      { title: "Monthly revenue", value: formatMoney(monthlyRevenue), icon: DollarSign, percentage: percentOf(monthlyRevenue, Math.max(monthlyRevenue + prevMonthlyRevenue, 1)), trend: pctDiff(monthlyRevenue, prevMonthlyRevenue), todayValue: formatMoney(items.filter((i) => inRange(atDate(i.createdAt), startToday, startTomorrow) && i.consultationType === "PAID").reduce((sum, i) => sum + parseConsultationAmount(i), 0)), monthlyComparison: `${formatMoney(monthlyRevenue)} / ${formatMoney(prevMonthlyRevenue)}` },
+      { title: "Weekly revenue", value: formatMoney(weeklyRevenue), icon: Wallet, percentage: percentOf(weeklyRevenue, Math.max(weeklyRevenue + prevWeeklyRevenue, 1)), trend: pctDiff(weeklyRevenue, prevWeeklyRevenue), todayValue: formatMoney(items.filter((i) => inRange(atDate(i.createdAt), startToday, startTomorrow) && i.consultationType === "PAID").reduce((sum, i) => sum + parseConsultationAmount(i), 0)), monthlyComparison: `${formatMoney(weeklyRevenue)} / ${formatMoney(prevWeeklyRevenue)}` },
+      { title: "Conversion rate", value: `${conversionRate.toFixed(1)}%`, icon: Target, percentage: percentOf(paidItems.length, total), trend: pctDiff(conversionRate, prevConversionRate), todayValue: `${todayCount ? ((todayPaid / todayCount) * 100).toFixed(1) : 0}%`, monthlyComparison: `${conversionRate.toFixed(1)}% / ${prevConversionRate.toFixed(1)}%` },
+      { title: "Average check", value: formatMoney(averageCheck), icon: TrendingUp, percentage: percentOf(averageCheck, Math.max(averageCheck + prevAverageCheck, 1)), trend: pctDiff(averageCheck, prevAverageCheck), todayValue: formatMoney(todayPaid ? items.filter((i) => inRange(atDate(i.createdAt), startToday, startTomorrow) && i.consultationType === "PAID").reduce((sum, i) => sum + parseConsultationAmount(i), 0) / todayPaid : 0), monthlyComparison: `${formatMoney(averageCheck)} / ${formatMoney(prevAverageCheck)}` },
+      { title: "Active clients", value: activeClients, icon: UserCheck, percentage: percentOf(activeClients, Math.max(clientCards.length, 1)), trend: pctDiff(activeClients, Math.max(activeClients - 1, 0)), todayValue: new Set(items.filter((i) => inRange(atDate(i.createdAt), startToday, startTomorrow)).map((i) => String(i.email || `${i.firstName}_${i.lastName || ""}`).toLowerCase())).size, monthlyComparison: `${activeClients} / ${Math.max(activeClients - 1, 0)}` },
+      { title: "New clients", value: newClients, icon: UserPlus, percentage: percentOf(newClients, Math.max(clientCards.length, 1)), trend: pctDiff(newClients, prevNewClients), todayValue: Array.from(firstSeen.values()).filter((d) => inRange(d, startToday, startTomorrow)).length, monthlyComparison: `${newClients} / ${prevNewClients}` },
+    ];
+  }, [consultationsFeed, paymentAnalytics.overall, clientCards.length]);
+
+  const dashboardCharts = useMemo(() => {
+    const items = consultationsFeed || [];
+    const now = new Date();
+    const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+
+    const parseConsultationAmount = (item) => {
+      if (item?.selectedServices) {
+        try {
+          const services = JSON.parse(item.selectedServices);
+          if (Array.isArray(services)) return services.reduce((sum, service) => sum + parseMoneyFromText(service?.price), 0);
+        } catch {
+          // noop
+        }
+      }
+      return parseMoneyFromText(item?.servicePriceText || item?.service?.price || "");
+    };
+
+    const consultationsByDayMap = new Map();
+    const revenueByDayMap = new Map();
+    const clientActivityMap = new Map();
+
+    for (let i = 13; i >= 0; i -= 1) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = dayKey(d);
+      consultationsByDayMap.set(key, 0);
+      revenueByDayMap.set(key, 0);
+      clientActivityMap.set(key, new Set());
+    }
+
+    items.forEach((item) => {
+      const key = dayKey(item.createdAt);
+      if (!consultationsByDayMap.has(key)) return;
+      consultationsByDayMap.set(key, (consultationsByDayMap.get(key) || 0) + 1);
+      if (item.consultationType === "PAID") {
+        revenueByDayMap.set(key, (revenueByDayMap.get(key) || 0) + parseConsultationAmount(item));
+      }
+      clientActivityMap.get(key).add(String(item.email || `${item.firstName}_${item.lastName || ""}`).toLowerCase());
+    });
+
+    const consultationsByDay = Array.from(consultationsByDayMap.entries()).map(([day, value]) => ({ day: day.slice(5), value }));
+    const revenueByDay = Array.from(revenueByDayMap.entries()).map(([day, value]) => ({ day: day.slice(5), value: Math.round(value) }));
+    const clientActivity = Array.from(clientActivityMap.entries()).map(([day, set]) => ({ day: day.slice(5), active: set.size }));
+
+    const managerPerformance = Object.values(
+      items.reduce((acc, item) => {
+        const key = item.assignedManager?.email || item.assignedManagerId || "unassigned";
+        if (!acc[key]) {
+          acc[key] = { name: item.assignedManager?.firstName || item.assignedManager?.email || "Без менеджера", total: 0, completed: 0 };
+        }
+        acc[key].total += 1;
+        if (item.status === "COMPLETED") acc[key].completed += 1;
+        return acc;
+      }, {})
+    ).slice(0, 8);
+
+    const monthlyGrowthMap = new Map();
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthlyGrowthMap.set(key, { month: key.slice(2), consultations: 0, revenue: 0 });
+    }
+
+    items.forEach((item) => {
+      const d = new Date(item.createdAt);
+      if (Number.isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!monthlyGrowthMap.has(key)) return;
+      const row = monthlyGrowthMap.get(key);
+      row.consultations += 1;
+      if (item.consultationType === "PAID") row.revenue += parseConsultationAmount(item);
+    });
+
+    const paymentStatus = Object.values(
+      (payments || []).reduce((acc, item) => {
+        const key = item.paymentStatus || "PENDING";
+        if (!acc[key]) acc[key] = { name: key, value: 0 };
+        acc[key].value += 1;
+        return acc;
+      }, {})
+    );
+
+    return {
+      consultationsByDay,
+      revenueByDay,
+      clientActivity,
+      managerPerformance,
+      monthlyGrowth: Array.from(monthlyGrowthMap.values()),
+      paymentStatus,
+    };
+  }, [consultationsFeed, payments]);
 
   const selectedDateKey = selectedCalendarDate?.toISOString?.().slice(0, 10) || "";
-  const calendarItems = useMemo(() => {
+
+  const calendarEvents = useMemo(() => {
     return consultations
-      .filter((item) => item.preferredDateTime && String(item.preferredDateTime).slice(0, 10) === selectedDateKey)
-      .sort((a, b) => new Date(a.preferredDateTime) - new Date(b.preferredDateTime));
-  }, [consultations, selectedDateKey]);
+      .map((item) => {
+        const startValue = item.scheduledAt || item.preferredDateTime;
+        if (!startValue) return null;
+        const start = new Date(startValue);
+        if (Number.isNaN(start.getTime())) return null;
+        const durationMinutes = Number(item.estimatedDuration || 45);
+        const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+        return {
+          ...item,
+          start,
+          end,
+          dateKey: start.toISOString().slice(0, 10),
+          durationMinutes,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.start - b.start);
+  }, [consultations]);
+
+  const calendarItems = useMemo(() => {
+    return calendarEvents.filter((item) => item.dateKey === selectedDateKey);
+  }, [calendarEvents, selectedDateKey]);
+
+  const weekDays = useMemo(() => {
+    const selected = new Date(selectedCalendarDate);
+    const day = selected.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(selected);
+    monday.setDate(selected.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 7 }).map((_, idx) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + idx);
+      return d;
+    });
+  }, [selectedCalendarDate]);
+
+  const weekEventsMap = useMemo(() => {
+    const map = new Map();
+    weekDays.forEach((day) => map.set(day.toISOString().slice(0, 10), []));
+    calendarEvents.forEach((event) => {
+      if (map.has(event.dateKey)) {
+        map.get(event.dateKey).push(event);
+      }
+    });
+    return map;
+  }, [weekDays, calendarEvents]);
+
+  const monthGridDays = useMemo(() => {
+    const selected = new Date(selectedCalendarDate);
+    const monthStart = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    const monthEnd = new Date(selected.getFullYear(), selected.getMonth() + 1, 0);
+    const firstDay = monthStart.getDay();
+    const calendarStart = new Date(monthStart);
+    calendarStart.setDate(monthStart.getDate() - (firstDay === 0 ? 6 : firstDay - 1));
+
+    const totalCells = 42;
+    return Array.from({ length: totalCells }).map((_, index) => {
+      const date = new Date(calendarStart);
+      date.setDate(calendarStart.getDate() + index);
+      const key = date.toISOString().slice(0, 10);
+      return {
+        date,
+        key,
+        inCurrentMonth: date >= monthStart && date <= monthEnd,
+        events: calendarEvents.filter((event) => event.dateKey === key),
+      };
+    });
+  }, [selectedCalendarDate, calendarEvents]);
+
+  const agendaItems = useMemo(() => {
+    const start = new Date(selectedCalendarDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 30);
+
+    return calendarEvents.filter((item) => item.start >= start && item.start < end);
+  }, [calendarEvents, selectedCalendarDate]);
+
+  const ensureCalendarDraft = (event) => {
+    const existing = calendarDrafts[event.id];
+    if (existing) return existing;
+
+    const date = event.start.toISOString().slice(0, 10);
+    const time = event.start.toTimeString().slice(0, 5);
+    return {
+      date,
+      time,
+      durationMinutes: event.durationMinutes || 45,
+      recurringWeekly: false,
+      recurringCount: 1,
+    };
+  };
 
   const refreshAll = async () => {
     await Promise.all([
@@ -642,7 +1234,7 @@ export default function Admin() {
       updateMutation.mutate({ id: item.id, payload: { status: "PENDING", assignedManagerId: null } });
       return;
     }
-    if (stageKey === "ASSIGNED") {
+    if (stageKey === "PENDING") {
       if (!item.assignedManagerId) {
         alert("Спочатку призначте менеджера у вкладці консультацій.");
         return;
@@ -650,7 +1242,7 @@ export default function Admin() {
       updateMutation.mutate({ id: item.id, payload: { status: "PENDING" } });
       return;
     }
-    if (stageKey === "CLIENT") {
+    if (stageKey === "CONFIRMED" || stageKey === "IN_PROGRESS") {
       if (!item.assignedManagerId) {
         alert("Не можна підтвердити без менеджера.");
         return;
@@ -658,8 +1250,21 @@ export default function Admin() {
       updateMutation.mutate({ id: item.id, payload: { status: "CONFIRMED" } });
       return;
     }
-    if (stageKey === "DONE") {
+    if (stageKey === "PAID") {
+      if (!item.assignedManagerId) {
+        alert("Не можна позначити оплату без менеджера.");
+        return;
+      }
+      updateMutation.mutate({ id: item.id, payload: { status: "CONFIRMED" } });
+      markPaidMutation.mutate(item.id);
+      return;
+    }
+    if (stageKey === "COMPLETED") {
       updateMutation.mutate({ id: item.id, payload: { status: "COMPLETED" } });
+      return;
+    }
+    if (stageKey === "CANCELLED" || stageKey === "LOST") {
+      updateMutation.mutate({ id: item.id, payload: { status: "CANCELLED" } });
     }
   };
 
@@ -682,7 +1287,7 @@ export default function Admin() {
       };
       setPipelineOrder(nextOrder);
       if (isPipelineOrderInitialized) {
-        savePipelinePreferencesMutation.mutate(nextOrder);
+        savePipelinePreferencesMutation.mutate(serializePipelineOrderForApi(nextOrder));
       }
       return;
     }
@@ -701,7 +1306,7 @@ export default function Admin() {
     };
     setPipelineOrder(nextOrder);
     if (isPipelineOrderInitialized) {
-      savePipelinePreferencesMutation.mutate(nextOrder);
+      savePipelinePreferencesMutation.mutate(serializePipelineOrderForApi(nextOrder));
     }
 
     moveConsultationToStage(item, destKey);
@@ -710,6 +1315,73 @@ export default function Admin() {
   const stageTimerLabel = (item) => {
     const base = item.pipelineStageEnteredAt || item.confirmedAt || item.updatedAt || item.createdAt;
     return formatStageTime(base);
+  };
+
+  const goToToday = () => setSelectedCalendarDate(new Date());
+
+  const shiftCalendar = (step) => {
+    setSelectedCalendarDate((prev) => {
+      const next = new Date(prev);
+      if (calendarView === "MONTH") {
+        next.setMonth(next.getMonth() + step);
+      } else {
+        next.setDate(next.getDate() + (calendarView === "WEEK" ? step * 7 : step));
+      }
+      return next;
+    });
+  };
+
+  const upsertCalendarDraft = (event, patch) => {
+    setCalendarDrafts((prev) => {
+      const base = prev[event.id] || ensureCalendarDraft(event);
+      return {
+        ...prev,
+        [event.id]: {
+          ...base,
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const applyCalendarDraft = (event) => {
+    const draft = calendarDrafts[event.id] || ensureCalendarDraft(event);
+    const date = draft.date || event.start.toISOString().slice(0, 10);
+    const time = draft.time || event.start.toTimeString().slice(0, 5);
+    const scheduledAt = `${date}T${time}:00`;
+    const estimatedDuration = Number(draft.durationMinutes || event.durationMinutes || 45);
+
+    updateMutation.mutate({
+      id: event.id,
+      payload: {
+        scheduledAt,
+        estimatedDuration,
+      },
+    });
+  };
+
+  const onCalendarDragEnd = (result) => {
+    if (!result.destination) return;
+    const draggableId = result.draggableId || "";
+    if (!draggableId.startsWith("cal-")) return;
+
+    const consultationId = draggableId.replace("cal-", "");
+    const event = calendarEvents.find((entry) => entry.id === consultationId);
+    if (!event) return;
+
+    const destinationDate = result.destination.droppableId;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(destinationDate)) return;
+
+    const sourceTime = (calendarDrafts[event.id]?.time) || event.start.toTimeString().slice(0, 5);
+    const nextScheduledAt = `${destinationDate}T${sourceTime}:00`;
+
+    updateMutation.mutate({
+      id: event.id,
+      payload: {
+        scheduledAt: nextScheduledAt,
+        estimatedDuration: Number(calendarDrafts[event.id]?.durationMinutes || event.durationMinutes || 45),
+      },
+    });
   };
 
   const submitWorker = (e) => {
@@ -769,31 +1441,72 @@ export default function Admin() {
     });
   };
 
+  useEffect(() => {
+    const onHotkey = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        const input = document.getElementById("admin-global-search");
+        input?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onHotkey);
+    return () => window.removeEventListener("keydown", onHotkey);
+  }, []);
+
   return (
-    <div className="pt-24 pb-16">
-      <div className="max-w-7xl mx-auto px-6 space-y-8">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+    <div className="pt-24 pb-16 bg-gradient-to-b from-white to-slate-50/70">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-8">
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Admin</p>
-            <h1 className="font-heading text-4xl lg:text-5xl tracking-tight">Панель керування</h1>
+            <h1 className="font-heading text-4xl lg:text-5xl tracking-tight">Premium CRM Console</h1>
             <p className="text-muted-foreground mt-3 max-w-2xl">
-              Консультації, статистика, черга повідомлень та аудиторський журнал.
+              Консультації, воронка, аналітика, платежі, календар і контроль якості в єдиному робочому просторі.
             </p>
           </div>
-          <Button variant="outline" onClick={refreshAll} className="gap-2">
-            <RefreshCw className="w-4 h-4" /> Оновити
-          </Button>
+
+          <div className="w-full xl:w-auto flex flex-col sm:flex-row gap-2">
+            <div className="relative min-w-[280px]">
+              <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input
+                id="admin-global-search"
+                placeholder="Пошук по CRM (Ctrl/Cmd + K)"
+                value={filters.search}
+                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setActiveTab("consultations");
+                  }
+                }}
+                className="pl-9 h-10 bg-white"
+                aria-label="Глобальний пошук по CRM"
+              />
+            </div>
+            <Button variant="outline" onClick={refreshAll} className="gap-2 h-10">
+              <RefreshCw className="w-4 h-4" /> Оновити
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard title="Усього записів" value={stats.total ?? "—"} icon={Users} subtitle={`Платні: ${stats.paidCount ?? 0} / Безкоштовні: ${stats.freeCount ?? 0}`} />
-          <StatCard title="Платні заявки" value={stats.paidCount ?? "—"} icon={Shield} subtitle={`${paidShare}% від усіх заявок`} />
-          <StatCard title="Нагальні / майбутні" value={stats.upcoming ?? "—"} icon={CalendarRange} subtitle="Записи з майбутньою датою" />
-          <StatCard title="Статус PENDING" value={stats.statusCounts?.PENDING ?? 0} icon={Clock3} subtitle="Очікують підтвердження" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          {dashboardKpis.map((metric) => (
+            <PremiumKpiCard
+              key={metric.title}
+              title={metric.title}
+              value={metric.value}
+              icon={metric.icon}
+              percentage={metric.percentage}
+              trend={metric.trend}
+              todayValue={metric.todayValue}
+              monthlyComparison={metric.monthlyComparison}
+            />
+          ))}
         </div>
 
-        <Tabs defaultValue="consultations" className="space-y-6">
-          <TabsList className="flex w-full flex-wrap gap-2 overflow-x-auto rounded-lg p-2 h-auto">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="sticky top-16 z-20 flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="consultations">Консультації</TabsTrigger>
             <TabsTrigger value="completed">Завершені</TabsTrigger>
             <TabsTrigger value="confirmed">Підтверджені</TabsTrigger>
@@ -808,6 +1521,148 @@ export default function Admin() {
             <TabsTrigger value="audit">Аудит</TabsTrigger>
             <TabsTrigger value="filters">Фільтри</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="dashboard" className="space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <Card className="shadow-sm border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Consultations by day</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      value: { label: "Consultations", color: "hsl(var(--chart-1))" },
+                    }}
+                  >
+                    <LineChart data={dashboardCharts.consultationsByDay}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="day" tickLine={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line dataKey="value" type="monotone" stroke="var(--color-value)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Revenue</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      value: { label: "Revenue", color: "hsl(var(--chart-2))" },
+                    }}
+                  >
+                    <BarChart data={dashboardCharts.revenueByDay}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="day" tickLine={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="value" fill="var(--color-value)" radius={8} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <Card className="shadow-sm border-border/80 xl:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-base">Monthly growth</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      consultations: { label: "Consultations", color: "hsl(var(--chart-3))" },
+                      revenue: { label: "Revenue", color: "hsl(var(--chart-1))" },
+                    }}
+                  >
+                    <LineChart data={dashboardCharts.monthlyGrowth}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Line dataKey="consultations" stroke="var(--color-consultations)" strokeWidth={2} dot={false} />
+                      <Line dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Payments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      value: { label: "Payments", color: "hsl(var(--chart-4))" },
+                    }}
+                  >
+                    <PieChart>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Pie data={dashboardCharts.paymentStatus} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90}>
+                        {dashboardCharts.paymentStatus.map((_, index) => (
+                          <Cell key={`pay-${index}`} fill={["#22c55e", "#f59e0b", "#ef4444", "#6366f1"][index % 4]} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <Card className="shadow-sm border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Managers performance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      total: { label: "Total", color: "hsl(var(--chart-2))" },
+                      completed: { label: "Completed", color: "hsl(var(--chart-1))" },
+                    }}
+                  >
+                    <BarChart data={dashboardCharts.managerPerformance}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="total" fill="var(--color-total)" radius={6} />
+                      <Bar dataKey="completed" fill="var(--color-completed)" radius={6} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Client activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    className="h-[280px] w-full"
+                    config={{
+                      active: { label: "Active clients", color: "hsl(var(--chart-5))" },
+                    }}
+                  >
+                    <LineChart data={dashboardCharts.clientActivity}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="day" tickLine={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line dataKey="active" type="monotone" stroke="var(--color-active)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
           <TabsContent value="consultations" className="space-y-4">
             <Card>
@@ -1126,31 +1981,40 @@ export default function Admin() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                   <div className="rounded-lg border p-3 bg-muted/20">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Нова → Призначена</p>
-                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.newToAssigned}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.assignedCount} з {pipelineConversions.newCount || 0} заявок перейшли далі</p>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">New → Pending</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.newToPending}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.pendingCount} з {pipelineConversions.newCount || 0} заявок перейшли далі</p>
                   </div>
                   <div className="rounded-lg border p-3 bg-muted/20">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Призначена → Клієнт</p>
-                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.assignedToClient}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.clientCount} з {pipelineConversions.assignedCount || 0} дійшли до підтвердження</p>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Pending → Confirmed</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.pendingToConfirmed}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.confirmedCount + pipelineConversions.paidCount + pipelineConversions.inProgressCount} з {pipelineConversions.pendingCount || 0} дійшли до активного етапу</p>
                   </div>
                   <div className="rounded-lg border p-3 bg-muted/20">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Клієнт → Завершено</p>
-                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.clientToDone}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{pipelineConversions.doneCount} з {pipelineConversions.clientCount || 0} завершені</p>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Confirmed → Paid</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.confirmedToPaid}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Оплачено: {pipelineConversions.paidCount}</p>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">Active → Completed</p>
+                    <p className="text-2xl font-semibold mt-1">{pipelineConversions.activeToDone}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Completed: {pipelineConversions.doneCount} · Lost: {pipelineConversions.lostCount}</p>
                   </div>
                 </div>
 
                 <DragDropContext onDragEnd={onPipelineDragEnd}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8 gap-4">
                     {[
                       { key: "NEW", title: "Нова", items: funnelColumns.NEW },
-                      { key: "ASSIGNED", title: "Призначена консультація", items: funnelColumns.ASSIGNED },
-                      { key: "CLIENT", title: "Клієнт", items: funnelColumns.CLIENT },
-                      { key: "DONE", title: "Завершено", items: funnelColumns.DONE },
+                      { key: "PENDING", title: "Pending", items: funnelColumns.PENDING },
+                      { key: "CONFIRMED", title: "Confirmed", items: funnelColumns.CONFIRMED },
+                      { key: "PAID", title: "Paid", items: funnelColumns.PAID },
+                      { key: "IN_PROGRESS", title: "In Progress", items: funnelColumns.IN_PROGRESS },
+                      { key: "COMPLETED", title: "Completed", items: funnelColumns.COMPLETED },
+                      { key: "CANCELLED", title: "Cancelled", items: funnelColumns.CANCELLED },
+                      { key: "LOST", title: "Lost", items: funnelColumns.LOST },
                     ].map((column) => (
                       <Droppable droppableId={column.key} key={column.key}>
                         {(dropProvided, dropSnapshot) => (
@@ -1176,11 +2040,18 @@ export default function Admin() {
                                     <p className="font-medium">{item.firstName} {item.lastName || ""}</p>
                                     <p className="text-muted-foreground">{item.email}</p>
                                     <p className="text-muted-foreground">{item.assignedManager?.firstName || item.assignedManager?.email || "Без менеджера"}</p>
+                                    <p className="text-muted-foreground">{renderServicesForDisplay(item)}</p>
+                                    <p className="text-muted-foreground">{renderServicePriceForDisplay(item)}</p>
                                     <p className="text-muted-foreground">В етапі: {stageTimerLabel(item)}</p>
                                     <div className="flex gap-1 flex-wrap pt-1">
                                       {item.status !== "CONFIRMED" && item.status !== "COMPLETED" && item.assignedManagerId && (
                                         <Button size="sm" className="h-7 px-2 bg-green-500 text-white hover:bg-green-600" onClick={() => confirmConsultation(item)}>
                                           Підтв.
+                                        </Button>
+                                      )}
+                                      {column.key !== "PAID" && (
+                                        <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => moveConsultationToStage(item, "PAID")}>
+                                          Оплата
                                         </Button>
                                       )}
                                       {item.status !== "COMPLETED" && (
@@ -1212,10 +2083,10 @@ export default function Admin() {
           <TabsContent value="clients" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> Картки клієнтів</CardTitle>
+                <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> CRM Client 360</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Обрати клієнта</p>
                     <Select value={selectedClient?.key || ""} onValueChange={setSelectedClientKey}>
@@ -1228,19 +2099,137 @@ export default function Admin() {
                         ))}
                       </SelectContent>
                     </Select>
+
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Fast filters</p>
+                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={() => setFilters((prev) => ({ ...prev, status: "PENDING" }))}>Pending clients</Button>
+                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={() => setFilters((prev) => ({ ...prev, consultationType: "PAID" }))}>Paid only</Button>
+                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={() => setFilters({ consultationType: "", status: "", confirmationType: "", search: "" })}>Reset filters</Button>
+                    </div>
                   </div>
 
-                  {selectedClient ? (
-                    <div className="rounded-lg border border-border p-4 bg-muted/20 space-y-2">
-                      <p className="font-semibold">Картка 360: {selectedClient.fullName}</p>
-                      <p className="text-xs text-muted-foreground">{selectedClient.email} · {selectedClient.phone}</p>
-                      <p className="text-xs text-muted-foreground">Канал: {contactMethodLabel[selectedClient.preferredContactMethod] || "—"}</p>
-                      <p className="text-xs text-muted-foreground">Всього консультацій: {selectedClient.consultations.length}</p>
-                      <p className="text-xs text-muted-foreground">Останній етап: {stageLabel(selectedClient.consultations[0])}</p>
-                      <p className="text-xs text-muted-foreground">Середній чек клієнта: {formatMoney(averageCheckByEmail.get(String(selectedClient.email || "").toLowerCase()) || 0)}</p>
+                  {selectedClientProfile ? (
+                    <div className="rounded-xl border border-border/80 bg-white p-4 shadow-sm space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                            {getInitials(selectedClientProfile.fullName)}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-lg">{selectedClientProfile.fullName}</p>
+                            <p className="text-xs text-muted-foreground">{selectedClientProfile.email} · {selectedClientProfile.phone}</p>
+                          </div>
+                        </div>
+                        <Badge variant={statusTone[selectedClientProfile.status] || "secondary"}>{statusLabelMap[selectedClientProfile.status] || selectedClientProfile.status}</Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="rounded-lg border p-3 bg-muted/20">
+                          <p className="text-xs text-muted-foreground">Client score</p>
+                          <p className="text-lg font-semibold mt-1">{selectedClientProfile.clientScore}</p>
+                        </div>
+                        <div className="rounded-lg border p-3 bg-muted/20">
+                          <p className="text-xs text-muted-foreground">LTV</p>
+                          <p className="text-lg font-semibold mt-1">{formatMoney(selectedClientProfile.ltv)}</p>
+                        </div>
+                        <div className="rounded-lg border p-3 bg-muted/20">
+                          <p className="text-xs text-muted-foreground">Consultations</p>
+                          <p className="text-lg font-semibold mt-1">{selectedClientProfile.consultations.length}</p>
+                        </div>
+                        <div className="rounded-lg border p-3 bg-muted/20">
+                          <p className="text-xs text-muted-foreground">Open tasks</p>
+                          <p className="text-lg font-semibold mt-1">{selectedClientProfile.openTasks}</p>
+                        </div>
+                        <div className="rounded-lg border p-3 bg-muted/20">
+                          <p className="text-xs text-muted-foreground">Manager</p>
+                          <p className="text-sm font-semibold mt-1">{selectedClientProfile.managerName}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-lg border border-border p-3 space-y-1">
+                          <p><span className="text-muted-foreground">Company:</span> —</p>
+                          <p><span className="text-muted-foreground">Phone:</span> {selectedClientProfile.phone || "—"}</p>
+                          <p><span className="text-muted-foreground">Email:</span> {selectedClientProfile.email || "—"}</p>
+                          <p><span className="text-muted-foreground">Telegram:</span> {selectedClientProfile.phone || "—"}</p>
+                          <p><span className="text-muted-foreground">Instagram:</span> —</p>
+                          <p><span className="text-muted-foreground">Facebook:</span> —</p>
+                          <p><span className="text-muted-foreground">Address:</span> —</p>
+                        </div>
+                        <div className="rounded-lg border border-border p-3 space-y-1">
+                          <p><span className="text-muted-foreground">Responsible manager:</span> {selectedClientProfile.managerName}</p>
+                          <p><span className="text-muted-foreground">Total revenue:</span> {formatMoney(selectedClientProfile.totalRevenue)}</p>
+                          <p><span className="text-muted-foreground">Average check:</span> {formatMoney(averageCheckByEmail.get(String(selectedClientProfile.email || "").toLowerCase()) || 0)}</p>
+                          <p><span className="text-muted-foreground">Last activity:</span> {formatDateTime(selectedClientProfile.lastActivityDate)}</p>
+                          <p><span className="text-muted-foreground">Created date:</span> {formatDateTime(selectedClientProfile.first?.createdAt)}</p>
+                          <p><span className="text-muted-foreground">Notes:</span> {selectedClientProfile.latest?.internalNotes || "—"}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {selectedClientProfile.tags.map((tag) => (
+                          <span key={tag} className={`text-xs border rounded-full px-2.5 py-1 ${clientTagClass(tag)}`}>{tag}</span>
+                        ))}
+                        {!selectedClientProfile.tags.length && <span className="text-xs text-muted-foreground">Немає тегів</span>}
+                      </div>
                     </div>
                   ) : null}
                 </div>
+
+                {selectedClientProfile ? (
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <Card className="xl:col-span-2">
+                      <CardHeader>
+                        <CardTitle className="text-base">Timeline & history</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3 max-h-[460px] overflow-y-auto">
+                        {selectedClientProfile.timeline?.slice(0, 50).map((event) => (
+                          <div key={event.id} className="relative pl-5 pb-3 border-l border-border ml-2">
+                            <span className="absolute -left-[6px] top-1 w-2.5 h-2.5 rounded-full bg-primary" aria-hidden="true" />
+                            <p className="text-sm font-medium">{event.title}</p>
+                            <p className="text-xs text-muted-foreground">{event.description}</p>
+                            <p className="text-[11px] text-muted-foreground mt-1">{formatDateTime(event.date)}</p>
+                          </div>
+                        ))}
+                        {!selectedClientProfile.timeline?.length && <p className="text-sm text-muted-foreground">Історія відсутня.</p>}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Tasks & payments</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Payments</p>
+                          <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                            {selectedClientProfile.relatedPayments.map((payment) => (
+                              <div key={payment.consultationId} className="rounded-md border p-2 text-xs">
+                                <p className="font-medium">{payment.serviceName || "Послуга"}</p>
+                                <p className="text-muted-foreground">{formatMoney(payment.amount || 0, payment.currency || "UAH")}</p>
+                                <Badge variant={payment.paymentStatus === "PAID" ? "default" : "secondary"} className="mt-1">{payment.paymentStatus}</Badge>
+                              </div>
+                            ))}
+                            {!selectedClientProfile.relatedPayments.length && <p className="text-xs text-muted-foreground">Платежів немає.</p>}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Tasks</p>
+                          <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                            {selectedClientProfile.relatedTasks.map((task) => (
+                              <div key={task.id} className="rounded-md border p-2 text-xs">
+                                <p className="font-medium">{task.title}</p>
+                                <p className="text-muted-foreground">{task.priority} · {task.status}</p>
+                              </div>
+                            ))}
+                            {!selectedClientProfile.relatedTasks.length && <p className="text-xs text-muted-foreground">Задач немає.</p>}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : null}
 
                 {clientCards.map((card) => {
                   const latest = card.consultations[0];
@@ -1530,47 +2519,198 @@ export default function Admin() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CalendarRange className="w-5 h-5" /> Календар записів</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-                <div className="border rounded-lg p-2 w-fit">
-                  <Calendar
-                    mode="single"
-                    selected={selectedCalendarDate}
-                    onSelect={(day) => day && setSelectedCalendarDate(day)}
-                  />
+              <CardContent className="space-y-4">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button size="icon" variant="outline" onClick={() => shiftCalendar(-1)} aria-label="Попередній період">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button size="icon" variant="outline" onClick={() => shiftCalendar(1)} aria-label="Наступний період">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={goToToday}>Сьогодні</Button>
+                    <p className="text-sm text-muted-foreground ml-1">
+                      {selectedCalendarDate?.toLocaleDateString("uk-UA", { dateStyle: "full" })}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { key: "DAY", label: "Day" },
+                      { key: "WEEK", label: "Week" },
+                      { key: "MONTH", label: "Month" },
+                      { key: "AGENDA", label: "Agenda" },
+                    ].map((view) => (
+                      <Button
+                        key={view.key}
+                        size="sm"
+                        variant={calendarView === view.key ? "default" : "outline"}
+                        onClick={() => setCalendarView(view.key)}
+                      >
+                        {view.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Записи на {selectedCalendarDate?.toLocaleDateString("uk-UA") || "—"}
-                  </p>
+                <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4">
+                  <div className="rounded-xl border border-border p-2 bg-white w-fit">
+                    <Calendar
+                      mode="single"
+                      selected={selectedCalendarDate}
+                      onSelect={(day) => day && setSelectedCalendarDate(day)}
+                    />
+                    <p className="text-xs text-muted-foreground px-2 pb-2">Перетягуйте картки між днями у Week view.</p>
+                  </div>
 
-                  {calendarItems.map((item) => (
-                    <div key={item.id} className="p-4 rounded-lg border border-border">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                        <div>
-                          <p className="font-medium">
-                            {new Date(item.preferredDateTime).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}
-                            {" · "}
-                            {item.firstName} {item.lastName || ""}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{item.email} · {item.phone || "—"}</p>
-                          <p className="text-xs text-muted-foreground">{item.serviceName || item.service?.name || "Безкоштовна консультація"}</p>
-                        </div>
-                        <div className="text-xs">
-                          <Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge>
-                          <p className="text-muted-foreground mt-2">
-                            {item.assignedManagerId
-                              ? `Закріплено: ${item.assignedManager?.firstName || item.assignedManager?.email || "—"}`
-                              : "На розподіленні / в обробці"}
-                          </p>
-                        </div>
+                  <div className="space-y-3">
+                    {calendarView === "DAY" && (
+                      <div className="space-y-3">
+                        {calendarItems.map((item) => {
+                          const draft = ensureCalendarDraft(item);
+                          return (
+                            <div key={item.id} className="p-4 rounded-xl border border-border bg-white shadow-sm space-y-3">
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-medium">
+                                    {item.start.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}
+                                    {" · "}
+                                    {item.firstName} {item.lastName || ""}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{item.email} · {item.phone || "—"}</p>
+                                  <p className="text-xs text-muted-foreground">{renderServicesForDisplay(item)}</p>
+                                </div>
+                                <Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                                <Input
+                                  type="date"
+                                  value={draft.date}
+                                  onChange={(e) => upsertCalendarDraft(item, { date: e.target.value })}
+                                />
+                                <Input
+                                  type="time"
+                                  value={draft.time}
+                                  onChange={(e) => upsertCalendarDraft(item, { time: e.target.value })}
+                                />
+                                <Input
+                                  type="number"
+                                  min={15}
+                                  max={240}
+                                  step={15}
+                                  value={draft.durationMinutes}
+                                  onChange={(e) => upsertCalendarDraft(item, { durationMinutes: Number(e.target.value) || 45 })}
+                                />
+                                <Button
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => applyCalendarDraft(item)}
+                                  disabled={updateMutation.isPending}
+                                >
+                                  {updateMutation.isPending ? "Збереження..." : "Зберегти"}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {!calendarItems.length && <p className="text-sm text-muted-foreground">На обрану дату записів немає.</p>}
                       </div>
-                    </div>
-                  ))}
+                    )}
 
-                  {!calendarItems.length && (
-                    <p className="text-sm text-muted-foreground">На обрану дату записів немає.</p>
-                  )}
+                    {calendarView === "WEEK" && (
+                      <DragDropContext onDragEnd={onCalendarDragEnd}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
+                          {weekDays.map((day) => {
+                            const dateKey = day.toISOString().slice(0, 10);
+                            const dayEvents = weekEventsMap.get(dateKey) || [];
+                            return (
+                              <Droppable key={dateKey} droppableId={dateKey}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.droppableProps}
+                                    className={`rounded-xl border min-h-[220px] p-2 ${snapshot.isDraggingOver ? "border-primary bg-primary/5" : "border-border bg-muted/20"}`}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedCalendarDate(day)}
+                                      className="w-full text-left mb-2"
+                                    >
+                                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                                        {day.toLocaleDateString("uk-UA", { weekday: "short" })}
+                                      </p>
+                                      <p className="font-medium text-sm">{day.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" })}</p>
+                                    </button>
+                                    <div className="space-y-2">
+                                      {dayEvents.map((event, index) => (
+                                        <Draggable key={`cal-${event.id}`} draggableId={`cal-${event.id}`} index={index}>
+                                          {(dragProvided, dragSnapshot) => (
+                                            <div
+                                              ref={dragProvided.innerRef}
+                                              {...dragProvided.draggableProps}
+                                              {...dragProvided.dragHandleProps}
+                                              className={`rounded-md border bg-white p-2 text-xs ${dragSnapshot.isDragging ? "shadow-lg border-primary" : ""}`}
+                                            >
+                                              <p className="font-medium flex items-center gap-1"><GripVertical className="w-3 h-3" /> {event.firstName}</p>
+                                              <p className="text-muted-foreground">{event.start.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })}</p>
+                                              <p className="text-muted-foreground line-clamp-2">{renderServicesForDisplay(event)}</p>
+                                            </div>
+                                          )}
+                                        </Draggable>
+                                      ))}
+                                      {!dayEvents.length && <div className="text-xs text-muted-foreground border border-dashed rounded-md p-2">Порожньо</div>}
+                                    </div>
+                                    {provided.placeholder}
+                                  </div>
+                                )}
+                              </Droppable>
+                            );
+                          })}
+                        </div>
+                      </DragDropContext>
+                    )}
+
+                    {calendarView === "MONTH" && (
+                      <div className="grid grid-cols-7 gap-2">
+                        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w) => (
+                          <div key={w} className="text-xs text-muted-foreground font-medium text-center py-1">{w}</div>
+                        ))}
+                        {monthGridDays.map((cell) => (
+                          <button
+                            type="button"
+                            key={cell.key}
+                            onClick={() => {
+                              setSelectedCalendarDate(cell.date);
+                              setCalendarView("DAY");
+                            }}
+                            className={`min-h-[86px] rounded-lg border p-2 text-left transition-colors ${cell.inCurrentMonth ? "bg-white border-border hover:border-primary" : "bg-muted/30 border-border/60 text-muted-foreground"}`}
+                          >
+                            <p className="text-xs font-medium">{cell.date.getDate()}</p>
+                            <p className="text-[11px] text-muted-foreground mt-1">{cell.events.length} запис(ів)</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {calendarView === "AGENDA" && (
+                      <div className="space-y-3">
+                        {agendaItems.map((item) => (
+                          <div key={item.id} className="rounded-xl border border-border bg-white p-3">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                              <div>
+                                <p className="font-medium">{item.firstName} {item.lastName || ""}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateTime(item.start)} · {item.durationMinutes} хв</p>
+                                <p className="text-xs text-muted-foreground">{renderServicesForDisplay(item)}</p>
+                              </div>
+                              <Badge variant={statusTone[item.status] || "secondary"}>{item.status}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                        {!agendaItems.length && <p className="text-sm text-muted-foreground">На найближчі 30 днів записів немає.</p>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
