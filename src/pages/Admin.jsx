@@ -121,7 +121,13 @@ const statusTone = {
 const contactMethodLabel = {
   PHONE: "Дзвінок",
   TELEGRAM: "Telegram",
-  EMAIL: "Email",
+  EMAIL: "Ел. пошта",
+};
+
+const aiScenarioLabels = {
+  "client-summary": "Підсумок по клієнту",
+  "next-action": "Наступна найкраща дія",
+  "reply-draft": "Чернетка відповіді",
 };
 
 const PIPELINE_KEYS = ["NEW", "PENDING", "CONFIRMED", "PAID", "IN_PROGRESS", "COMPLETED", "CANCELLED", "LOST"];
@@ -186,7 +192,7 @@ const stageLabel = (item) => {
 
 const buildConfirmationDetails = (item) => [
   `Клієнт: ${item.firstName} ${item.lastName || ""}`.trim(),
-  `Email: ${item.email}`,
+  `Ел. пошта: ${item.email}`,
   `Телефон/Telegram: ${item.phone || "—"}`,
   `Канал: ${contactMethodLabel[item.preferredContactMethod] || "—"}`,
   `Менеджер: ${item.assignedManager?.firstName || item.assignedManager?.email || "—"}`,
@@ -245,15 +251,15 @@ const getTelegramHref = (item) => {
 };
 
 const statusLabelMap = {
-  PENDING: "Pending",
-  CONFIRMED: "Confirmed",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
+  PENDING: "В очікуванні",
+  CONFIRMED: "Підтверджено",
+  COMPLETED: "Завершено",
+  CANCELLED: "Скасовано",
 };
 
 const getInitials = (fullName = "") => {
   const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "CL";
+  if (!parts.length) return "КЛ";
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("");
 };
 
@@ -278,10 +284,10 @@ const inferClientTags = ({ consultations = [], totalRevenue = 0 }) => {
   const now = Date.now();
   const first = consultations[consultations.length - 1];
 
-  if (consultations.length > 1) tags.add("Returning Client");
-  else tags.add("New Client");
+  if (consultations.length > 1) tags.add("Повторний клієнт");
+  else tags.add("Новий клієнт");
 
-  if (totalRevenue >= 50000) tags.add("VIP");
+  if (totalRevenue >= 50000) tags.add("Преміум");
 
   const allText = consultations
     .flatMap((item) => [
@@ -291,19 +297,19 @@ const inferClientTags = ({ consultations = [], totalRevenue = 0 }) => {
     .join(" ")
     .toLowerCase();
 
-  if (allText.includes("грант")) tags.add("Grant");
-  if (allText.includes("облік") || allText.includes("бух")) tags.add("Accounting");
-  if (allText.includes("фоп")) tags.add("FOP");
-  if (allText.includes("тов") || allText.includes("llc")) tags.add("LLC");
-  if (allText.includes("подат")) tags.add("Taxes");
-  if (allText.includes("юрид") || allText.includes("legal")) tags.add("Legal");
+  if (allText.includes("грант")) tags.add("Гранти");
+  if (allText.includes("облік") || allText.includes("бух")) tags.add("Бухоблік");
+  if (allText.includes("фоп")) tags.add("ФОП");
+  if (allText.includes("тов") || allText.includes("llc")) tags.add("ТОВ");
+  if (allText.includes("подат")) tags.add("Податки");
+  if (allText.includes("юрид") || allText.includes("legal")) tags.add("Юридичні");
 
   const latest = consultations[0];
-  if (latest?.consultationType === "PAID" && latest?.status === "PENDING") tags.add("Priority");
+  if (latest?.consultationType === "PAID" && latest?.status === "PENDING") tags.add("Пріоритет");
 
   const firstCreated = first?.createdAt ? new Date(first.createdAt).getTime() : null;
   if (firstCreated && now - firstCreated <= 1000 * 60 * 60 * 24 * 30) {
-    tags.add("New Client");
+    tags.add("Новий клієнт");
   }
 
   return Array.from(tags);
@@ -311,16 +317,16 @@ const inferClientTags = ({ consultations = [], totalRevenue = 0 }) => {
 
 const clientTagClass = (tag) => {
   const palette = {
-    VIP: "bg-amber-100 text-amber-800 border-amber-200",
-    Grant: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    Accounting: "bg-sky-100 text-sky-800 border-sky-200",
-    FOP: "bg-indigo-100 text-indigo-800 border-indigo-200",
-    LLC: "bg-violet-100 text-violet-800 border-violet-200",
-    Taxes: "bg-rose-100 text-rose-800 border-rose-200",
-    Legal: "bg-slate-100 text-slate-800 border-slate-200",
-    Priority: "bg-red-100 text-red-800 border-red-200",
-    "New Client": "bg-lime-100 text-lime-800 border-lime-200",
-    "Returning Client": "bg-cyan-100 text-cyan-800 border-cyan-200",
+    Преміум: "bg-amber-100 text-amber-800 border-amber-200",
+    Гранти: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    Бухоблік: "bg-sky-100 text-sky-800 border-sky-200",
+    ФОП: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    ТОВ: "bg-violet-100 text-violet-800 border-violet-200",
+    Податки: "bg-rose-100 text-rose-800 border-rose-200",
+    Юридичні: "bg-slate-100 text-slate-800 border-slate-200",
+    Пріоритет: "bg-red-100 text-red-800 border-red-200",
+    "Новий клієнт": "bg-lime-100 text-lime-800 border-lime-200",
+    "Повторний клієнт": "bg-cyan-100 text-cyan-800 border-cyan-200",
   };
   return palette[tag] || "bg-muted text-foreground border-border";
 };
@@ -821,6 +827,30 @@ export default function Admin() {
   const visibleNotifications = useMemo(() => {
     return notifications.filter((item) => !notificationReadMap[item.id]).slice(0, 20);
   }, [notifications, notificationReadMap]);
+
+  const adminTabs = useMemo(() => {
+    const tabs = [
+      { value: "dashboard", label: "Огляд" },
+      { value: "consultations", label: "Консультації" },
+      { value: "completed", label: "Завершені" },
+      { value: "confirmed", label: "Підтверджені" },
+      { value: "pipeline", label: "Воронка" },
+      { value: "clients", label: "Клієнти" },
+      { value: "payments", label: "Платежі" },
+      { value: "inbox", label: "Вхідні" },
+      { value: "automations", label: "Автоматизації" },
+      { value: "ai", label: "ШІ" },
+      { value: "crm", label: "CRM" },
+      { value: "calendar", label: "Календар" },
+      { value: "documents", label: "Документи" },
+      ...(capabilities.manageBlog ? [{ value: "blog", label: "Блог" }] : []),
+      ...(capabilities.manageReviews ? [{ value: "reviews", label: "Відгуки" }] : []),
+      { value: "notifications", label: `Повідомлення${unreadNotificationsCount ? ` (${unreadNotificationsCount})` : ""}` },
+      ...(capabilities.viewAudit ? [{ value: "audit", label: "Аудит" }] : []),
+      { value: "filters", label: "Фільтри" },
+    ];
+    return tabs;
+  }, [capabilities.manageBlog, capabilities.manageReviews, capabilities.viewAudit, unreadNotificationsCount]);
 
   const documentFolders = useMemo(() => {
     const folders = new Set(["General"]);
@@ -1970,15 +2000,15 @@ export default function Admin() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-8">
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Admin</p>
-            <h1 className="font-heading text-4xl lg:text-5xl tracking-tight">Premium CRM Console</h1>
+            <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Адмін-панель</p>
+            <h1 className="font-heading text-4xl lg:text-5xl tracking-tight">Консоль керування FinOK</h1>
             <p className="text-muted-foreground mt-3 max-w-2xl">
               Консультації, воронка, аналітика, платежі, календар і контроль якості в єдиному робочому просторі.
             </p>
           </div>
 
           <div className="w-full xl:w-auto flex flex-col sm:flex-row gap-2">
-            <div className="relative min-w-[280px]">
+            <div className="relative min-w-0 w-full sm:min-w-[280px]">
               <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 id="admin-global-search"
@@ -2016,7 +2046,20 @@ export default function Admin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="sticky top-16 z-20 flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
+          <div className="md:hidden">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="h-11 bg-white">
+                <SelectValue placeholder="Оберіть розділ" />
+              </SelectTrigger>
+              <SelectContent>
+                {adminTabs.map((tab) => (
+                  <SelectItem key={tab.value} value={tab.value}>{tab.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <TabsList className="sticky top-16 z-20 hidden md:flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
             <TabsTrigger value="dashboard">Огляд</TabsTrigger>
             <TabsTrigger value="consultations">Консультації</TabsTrigger>
             <TabsTrigger value="completed">Завершені</TabsTrigger>
@@ -2026,7 +2069,7 @@ export default function Admin() {
             <TabsTrigger value="payments">Платежі</TabsTrigger>
             <TabsTrigger value="inbox">Вхідні</TabsTrigger>
             <TabsTrigger value="automations">Автоматизації</TabsTrigger>
-            <TabsTrigger value="ai">AI</TabsTrigger>
+            <TabsTrigger value="ai">ШІ</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
             <TabsTrigger value="calendar">Календар</TabsTrigger>
             <TabsTrigger value="documents">Документи</TabsTrigger>
@@ -2438,7 +2481,7 @@ export default function Admin() {
                       )}
                       {item.preferredContactMethod === "TELEGRAM" && (
                         <a href={getTelegramHref(item)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md border px-3 h-9 text-sm hover:bg-background">
-                          <Send className="w-4 h-4" /> Telegram
+                          <Send className="w-4 h-4" /> Відкрити Telegram
                         </a>
                       )}
                     </div>
@@ -2615,7 +2658,7 @@ export default function Admin() {
           <TabsContent value="clients" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> CRM Client 360</CardTitle>
+                <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> Картка клієнта 360</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
@@ -2914,7 +2957,7 @@ export default function Admin() {
           <TabsContent value="inbox" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Єдині вхідні</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Єдиний центр повідомлень</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -2930,9 +2973,9 @@ export default function Admin() {
                     <SelectTrigger><SelectValue placeholder="Канал" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Усі канали</SelectItem>
-                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="email">Ел. пошта</SelectItem>
                       <SelectItem value="telegram">Telegram</SelectItem>
-                      <SelectItem value="sms">SMS</SelectItem>
+                      <SelectItem value="sms">СМС</SelectItem>
                       <SelectItem value="instagram">Instagram</SelectItem>
                       <SelectItem value="facebook">Facebook</SelectItem>
                     </SelectContent>
@@ -2944,9 +2987,9 @@ export default function Admin() {
                     <SelectTrigger><SelectValue placeholder="Статус" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Усі статуси</SelectItem>
-                      <SelectItem value="queued">queued</SelectItem>
-                      <SelectItem value="sent">sent</SelectItem>
-                      <SelectItem value="failed">failed</SelectItem>
+                      <SelectItem value="queued">в черзі</SelectItem>
+                      <SelectItem value="sent">відправлено</SelectItem>
+                      <SelectItem value="failed">помилка</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button variant="outline" onClick={() => setInboxFilter({ channel: "", status: "", search: "" })}>Скинути</Button>
@@ -2970,15 +3013,15 @@ export default function Admin() {
                     <Select value={inboxForm.channel} onValueChange={(value) => setInboxForm((prev) => ({ ...prev, channel: value }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="email">Ел. пошта</SelectItem>
                         <SelectItem value="telegram">Telegram</SelectItem>
-                        <SelectItem value="sms">SMS</SelectItem>
+                        <SelectItem value="sms">СМС</SelectItem>
                         <SelectItem value="instagram">Instagram</SelectItem>
                         <SelectItem value="facebook">Facebook</SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder="Recipient (опц.)"
+                      placeholder="Отримувач (опц.)"
                       value={inboxForm.recipient}
                       onChange={(e) => setInboxForm((prev) => ({ ...prev, recipient: e.target.value }))}
                     />
@@ -3044,7 +3087,7 @@ export default function Admin() {
                     value={automationForm.consultationId || "none"}
                     onValueChange={(value) => setAutomationForm((prev) => ({ ...prev, consultationId: value === "none" ? "" : value }))}
                   >
-                    <SelectTrigger><SelectValue placeholder="Консультація (для reminder)" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Консультація (для нагадування)" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Не обрано</SelectItem>
                       {consultations.slice(0, 120).map((c) => (
@@ -3074,7 +3117,7 @@ export default function Admin() {
           <TabsContent value="ai" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> AI-помічник</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> ШІ-помічник</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <form onSubmit={runAiScenario} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 rounded-lg border border-border p-4 bg-muted/20">
@@ -3082,7 +3125,7 @@ export default function Admin() {
                     <SelectTrigger><SelectValue placeholder="Сценарій" /></SelectTrigger>
                     <SelectContent>
                       {aiScenarios.map((scenario) => (
-                        <SelectItem key={scenario.key} value={scenario.key}>{scenario.title}</SelectItem>
+                        <SelectItem key={scenario.key} value={scenario.key}>{aiScenarioLabels[scenario.key] || scenario.title}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -3101,7 +3144,7 @@ export default function Admin() {
                   <Input
                     value={aiForm.input}
                     onChange={(e) => setAiForm((prev) => ({ ...prev, input: e.target.value }))}
-                    placeholder="Додатковий prompt (опц.)"
+                    placeholder="Додаткова підказка (опц.)"
                   />
                   <Button type="submit" disabled={runAIMutation.isPending || !capabilities.runAI}>
                     {runAIMutation.isPending ? "Виконання..." : "Запустити сценарій"}
@@ -3111,7 +3154,7 @@ export default function Admin() {
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                   {aiScenarios.map((scenario) => (
                     <div key={scenario.key} className="rounded-lg border border-border bg-white p-3">
-                      <p className="font-medium text-sm">{scenario.title}</p>
+                      <p className="font-medium text-sm">{aiScenarioLabels[scenario.key] || scenario.title}</p>
                       <p className="text-xs text-muted-foreground mt-1">{scenario.description}</p>
                     </div>
                   ))}
@@ -3120,7 +3163,7 @@ export default function Admin() {
                 {aiResult ? (
                   <div className="rounded-xl border border-border bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <p className="font-medium">Результат: {aiResult.scenario}</p>
+                      <p className="font-medium">Результат: {aiScenarioLabels[aiResult.scenario] || aiResult.scenario}</p>
                       <Badge variant="outline">Впевненість: {Math.round(Number(aiResult.confidence || 0) * 100)}%</Badge>
                     </div>
                     {aiResult.title ? <p className="text-sm font-medium">{aiResult.title}</p> : null}
@@ -3171,9 +3214,9 @@ export default function Admin() {
                   <Select value={workerForm.role} onValueChange={(value) => setWorkerForm((p) => ({ ...p, role: value }))}>
                     <SelectTrigger disabled={!capabilities.manageWorkers}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MANAGER">MANAGER</SelectItem>
-                      <SelectItem value="ACCOUNTANT">ACCOUNTANT</SelectItem>
-                      <SelectItem value="VIEWER">VIEWER</SelectItem>
+                      <SelectItem value="MANAGER">Менеджер</SelectItem>
+                      <SelectItem value="ACCOUNTANT">Бухгалтер</SelectItem>
+                      <SelectItem value="VIEWER">Спостерігач</SelectItem>
                     </SelectContent>
                   </Select>
                   <Input placeholder="Пароль (опціонально)" value={workerForm.password} onChange={(e) => setWorkerForm((p) => ({ ...p, password: e.target.value }))} disabled={!capabilities.manageWorkers} />
@@ -3615,7 +3658,7 @@ export default function Admin() {
                   <Select value={calendarSyncForm.provider} onValueChange={(value) => setCalendarSyncForm((prev) => ({ ...prev, provider: value }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="google">Google Calendar</SelectItem>
+                      <SelectItem value="google">Google Календар</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button type="submit" disabled={pushCalendarSyncMutation.isPending || !capabilities.manageCalendar}>
@@ -3631,7 +3674,7 @@ export default function Admin() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Винятки серії повторень</CardTitle>
+                <CardTitle>Винятки повторюваної серії</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -3670,7 +3713,7 @@ export default function Admin() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted/40 text-left">
                         <tr>
-                          <th className="p-3 font-medium">Повтор</th>
+                          <th className="p-3 font-medium">Номер повтору</th>
                           <th className="p-3 font-medium">Дата</th>
                           <th className="p-3 font-medium">Статус</th>
                         </tr>
@@ -3711,7 +3754,7 @@ export default function Admin() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       <Input
-                        placeholder="Папка (напр. Contracts)"
+                        placeholder="Папка (напр. Договори)"
                         value={documentForm.folder}
                         onChange={(e) => setDocumentForm((prev) => ({ ...prev, folder: e.target.value || "General" }))}
                       />
