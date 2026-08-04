@@ -2017,15 +2017,15 @@ export default function Admin() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="sticky top-16 z-20 flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="dashboard">Огляд</TabsTrigger>
             <TabsTrigger value="consultations">Консультації</TabsTrigger>
             <TabsTrigger value="completed">Завершені</TabsTrigger>
             <TabsTrigger value="confirmed">Підтверджені</TabsTrigger>
             <TabsTrigger value="pipeline">Воронка</TabsTrigger>
             <TabsTrigger value="clients">Клієнти</TabsTrigger>
             <TabsTrigger value="payments">Платежі</TabsTrigger>
-            <TabsTrigger value="inbox">Inbox</TabsTrigger>
-            <TabsTrigger value="automations">Automation</TabsTrigger>
+            <TabsTrigger value="inbox">Вхідні</TabsTrigger>
+            <TabsTrigger value="automations">Автоматизації</TabsTrigger>
             <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="crm">CRM</TabsTrigger>
             <TabsTrigger value="calendar">Календар</TabsTrigger>
@@ -2048,13 +2048,13 @@ export default function Admin() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
-                  <CardTitle className="text-base">Consultations by day</CardTitle>
+                  <CardTitle className="text-base">Консультації по днях</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      value: { label: "Consultations", color: "hsl(var(--chart-1))" },
+                      value: { label: "Консультації", color: "hsl(var(--chart-1))" },
                     }}
                   >
                     <LineChart data={dashboardCharts.consultationsByDay}>
@@ -2069,13 +2069,13 @@ export default function Admin() {
 
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
-                  <CardTitle className="text-base">Revenue</CardTitle>
+                  <CardTitle className="text-base">Дохід</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      value: { label: "Revenue", color: "hsl(var(--chart-2))" },
+                      value: { label: "Дохід", color: "hsl(var(--chart-2))" },
                     }}
                   >
                     <BarChart data={dashboardCharts.revenueByDay}>
@@ -2092,14 +2092,14 @@ export default function Admin() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <Card className="shadow-sm border-border/80 xl:col-span-2">
                 <CardHeader>
-                  <CardTitle className="text-base">Monthly growth</CardTitle>
+                  <CardTitle className="text-base">Місячне зростання</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      consultations: { label: "Consultations", color: "hsl(var(--chart-3))" },
-                      revenue: { label: "Revenue", color: "hsl(var(--chart-1))" },
+                      consultations: { label: "Консультації", color: "hsl(var(--chart-3))" },
+                      revenue: { label: "Дохід", color: "hsl(var(--chart-1))" },
                     }}
                   >
                     <LineChart data={dashboardCharts.monthlyGrowth}>
@@ -2116,13 +2116,13 @@ export default function Admin() {
 
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
-                  <CardTitle className="text-base">Payments</CardTitle>
+                  <CardTitle className="text-base">Платежі</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      value: { label: "Payments", color: "hsl(var(--chart-4))" },
+                      value: { label: "Платежі", color: "hsl(var(--chart-4))" },
                     }}
                   >
                     <PieChart>
@@ -2141,14 +2141,14 @@ export default function Admin() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
-                  <CardTitle className="text-base">Managers performance</CardTitle>
+                  <CardTitle className="text-base">Ефективність менеджерів</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      total: { label: "Total", color: "hsl(var(--chart-2))" },
-                      completed: { label: "Completed", color: "hsl(var(--chart-1))" },
+                      total: { label: "Всього", color: "hsl(var(--chart-2))" },
+                      completed: { label: "Завершено", color: "hsl(var(--chart-1))" },
                     }}
                   >
                     <BarChart data={dashboardCharts.managerPerformance}>
@@ -2165,13 +2165,13 @@ export default function Admin() {
 
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
-                  <CardTitle className="text-base">Client activity</CardTitle>
+                  <CardTitle className="text-base">Активність клієнтів</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ChartContainer
                     className="h-[280px] w-full"
                     config={{
-                      active: { label: "Active clients", color: "hsl(var(--chart-5))" },
+                      active: { label: "Активні клієнти", color: "hsl(var(--chart-5))" },
                     }}
                   >
                     <LineChart data={dashboardCharts.clientActivity}>
@@ -2848,7 +2848,7 @@ export default function Admin() {
                           rel="noreferrer"
                           className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
                         >
-                          <FileText className="w-4 h-4 mr-1" /> Invoice PDF
+                          <FileText className="w-4 h-4 mr-1" /> Рахунок PDF
                         </a>
                         <a
                           href={apiClient.admin.payments.receiptUrl(payment.consultationId)}
@@ -2856,7 +2856,7 @@ export default function Admin() {
                           rel="noreferrer"
                           className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
                         >
-                          <FileText className="w-4 h-4 mr-1" /> Receipt PDF
+                          <FileText className="w-4 h-4 mr-1" /> Квитанція PDF
                         </a>
                         <a
                           href={apiClient.admin.payments.contractUrl(payment.consultationId)}
@@ -2864,7 +2864,7 @@ export default function Admin() {
                           rel="noreferrer"
                           className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
                         >
-                          <FileText className="w-4 h-4 mr-1" /> Contract PDF
+                          <FileText className="w-4 h-4 mr-1" /> Договір PDF
                         </a>
                         <Button
                           size="sm"
@@ -2914,7 +2914,7 @@ export default function Admin() {
           <TabsContent value="inbox" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Unified inbox</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Єдині вхідні</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -3018,7 +3018,7 @@ export default function Admin() {
                         {item.payload?.message ? <p className="text-sm mt-2 text-foreground/90">{item.payload.message}</p> : null}
                       </div>
                     ))}
-                    {!inboxItems.length && <p className="text-sm text-muted-foreground">Inbox порожній.</p>}
+                    {!inboxItems.length && <p className="text-sm text-muted-foreground">Вхідні порожні.</p>}
                   </div>
                 )}
               </CardContent>
@@ -3028,7 +3028,7 @@ export default function Admin() {
           <TabsContent value="automations" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Workflow className="w-5 h-5" /> Automation center</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Workflow className="w-5 h-5" /> Центр автоматизацій</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <form onSubmit={runAutomation} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border border-border p-4 bg-muted/20">
@@ -3053,7 +3053,7 @@ export default function Admin() {
                     </SelectContent>
                   </Select>
                   <Button type="submit" disabled={runAutomationMutation.isPending || !capabilities.runAutomations}>
-                    {runAutomationMutation.isPending ? "Виконання..." : "Run now"}
+                    {runAutomationMutation.isPending ? "Виконання..." : "Запустити"}
                   </Button>
                 </form>
 
@@ -3062,7 +3062,7 @@ export default function Admin() {
                     <div key={template.key} className="rounded-lg border border-border bg-white p-3">
                       <p className="font-medium text-sm">{template.title}</p>
                       <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
-                      <p className="text-[11px] text-muted-foreground mt-2">Key: {template.key}</p>
+                      <p className="text-[11px] text-muted-foreground mt-2">Ключ: {template.key}</p>
                     </div>
                   ))}
                   {!automationTemplates.length && <p className="text-sm text-muted-foreground">Шаблони автоматизацій недоступні.</p>}
@@ -3074,7 +3074,7 @@ export default function Admin() {
           <TabsContent value="ai" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> AI workspace</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> AI-помічник</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <form onSubmit={runAiScenario} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 rounded-lg border border-border p-4 bg-muted/20">
@@ -3104,7 +3104,7 @@ export default function Admin() {
                     placeholder="Додатковий prompt (опц.)"
                   />
                   <Button type="submit" disabled={runAIMutation.isPending || !capabilities.runAI}>
-                    {runAIMutation.isPending ? "Виконання..." : "Run scenario"}
+                    {runAIMutation.isPending ? "Виконання..." : "Запустити сценарій"}
                   </Button>
                 </form>
 
@@ -3120,8 +3120,8 @@ export default function Admin() {
                 {aiResult ? (
                   <div className="rounded-xl border border-border bg-white p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <p className="font-medium">Result: {aiResult.scenario}</p>
-                      <Badge variant="outline">Confidence: {Math.round(Number(aiResult.confidence || 0) * 100)}%</Badge>
+                      <p className="font-medium">Результат: {aiResult.scenario}</p>
+                      <Badge variant="outline">Впевненість: {Math.round(Number(aiResult.confidence || 0) * 100)}%</Badge>
                     </div>
                     {aiResult.title ? <p className="text-sm font-medium">{aiResult.title}</p> : null}
                     <p className="text-sm text-foreground/90 whitespace-pre-wrap">{aiResult.output}</p>
@@ -3160,7 +3160,7 @@ export default function Admin() {
                 <div className="mb-5 p-3 rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
                   {capabilities.manageWorkers
                     ? "Формування посилань приховано. До керування запрошеннями повернемося пізніше."
-                    : "У вас read-only доступ до працівників. Зміни може вносити адміністратор."}
+                    : "У вас доступ лише для перегляду працівників. Зміни може вносити адміністратор."}
                 </div>
 
                 <form onSubmit={submitWorker} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -3217,7 +3217,7 @@ export default function Admin() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Permission matrix (preview)</CardTitle>
+                <CardTitle>Матриця доступів (попередній перегляд)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">Поточна роль: <span className="font-medium text-foreground">{user?.role || "ADMIN"}</span></p>
@@ -3362,10 +3362,10 @@ export default function Admin() {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {[
-                      { key: "DAY", label: "Day" },
-                      { key: "WEEK", label: "Week" },
-                      { key: "MONTH", label: "Month" },
-                      { key: "AGENDA", label: "Agenda" },
+                      { key: "DAY", label: "День" },
+                      { key: "WEEK", label: "Тиждень" },
+                      { key: "MONTH", label: "Місяць" },
+                      { key: "AGENDA", label: "Порядок денний" },
                     ].map((view) => (
                       <Button
                         key={view.key}
@@ -3567,14 +3567,14 @@ export default function Admin() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5" /> Calendar sync (Google-ready)</CardTitle>
+                <CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5" /> Синхронізація календаря (Google)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {calendarSyncProviders.map((provider) => (
                     <div key={provider.key} className="rounded-lg border border-border bg-muted/20 p-3">
                       <p className="font-medium text-sm">{provider.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{provider.enabled ? "Configured" : "Not configured"}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{provider.enabled ? "Налаштовано" : "Не налаштовано"}</p>
                     </div>
                   ))}
                 </div>
@@ -3585,7 +3585,7 @@ export default function Admin() {
                     onClick={() => fetchGoogleConnectMutation.mutate()}
                     disabled={fetchGoogleConnectMutation.isPending || !capabilities.manageCalendar}
                   >
-                    {fetchGoogleConnectMutation.isPending ? "Завантаження..." : "Отримати connect URL"}
+                    {fetchGoogleConnectMutation.isPending ? "Завантаження..." : "Отримати URL підключення"}
                   </Button>
                   {googleConnectData?.enabled && googleConnectData?.connectUrl ? (
                     <a
@@ -3594,7 +3594,7 @@ export default function Admin() {
                       rel="noreferrer"
                       className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
                     >
-                      Open Google OAuth
+                      Відкрити Google OAuth
                     </a>
                   ) : null}
                 </div>
@@ -3619,7 +3619,7 @@ export default function Admin() {
                     </SelectContent>
                   </Select>
                   <Button type="submit" disabled={pushCalendarSyncMutation.isPending || !capabilities.manageCalendar}>
-                    {pushCalendarSyncMutation.isPending ? "Sync..." : "Push event"}
+                    {pushCalendarSyncMutation.isPending ? "Синхронізація..." : "Передати подію"}
                   </Button>
                 </form>
 
@@ -3631,7 +3631,7 @@ export default function Admin() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Recurring series exceptions</CardTitle>
+                <CardTitle>Винятки серії повторень</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -3660,7 +3660,7 @@ export default function Admin() {
                       placeholder="Причина (опц.)"
                     />
                     <Button type="submit" disabled={addRecurringExceptionMutation.isPending || !capabilities.manageCalendar}>
-                      {addRecurringExceptionMutation.isPending ? "Збереження..." : "Skip occurrence"}
+                      {addRecurringExceptionMutation.isPending ? "Збереження..." : "Пропустити повтор"}
                     </Button>
                   </form>
                 </div>
@@ -3670,7 +3670,7 @@ export default function Admin() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted/40 text-left">
                         <tr>
-                          <th className="p-3 font-medium">Occurrence</th>
+                          <th className="p-3 font-medium">Повтор</th>
                           <th className="p-3 font-medium">Дата</th>
                           <th className="p-3 font-medium">Статус</th>
                         </tr>
@@ -3696,12 +3696,12 @@ export default function Admin() {
           <TabsContent value="documents" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Documents module</CardTitle>
+                <CardTitle>Модуль документів</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-4">
                   <form onSubmit={submitDocument} className="rounded-xl border border-border bg-white p-4 space-y-3">
-                    <p className="text-sm font-medium">Upload / new version</p>
+                    <p className="text-sm font-medium">Завантаження / нова версія</p>
                     <Input
                       placeholder="Назва документа"
                       value={documentForm.title}
