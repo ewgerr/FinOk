@@ -22,6 +22,7 @@ const taskStatusOptions = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"];
 const taskPriorityOptions = ["LOW", "MEDIUM", "HIGH"];
 const ADMIN_TAB_SHORTCUT_ORDER = [
   "dashboard",
+  "analytics",
   "consultations",
   "pipeline",
   "clients",
@@ -831,6 +832,7 @@ export default function Admin() {
   const adminTabs = useMemo(() => {
     const tabs = [
       { value: "dashboard", label: "Огляд" },
+      { value: "analytics", label: "Аналітика" },
       { value: "consultations", label: "Консультації" },
       { value: "completed", label: "Завершені" },
       { value: "confirmed", label: "Підтверджені" },
@@ -2046,9 +2048,22 @@ export default function Admin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="md:hidden">
+          <div className="flex items-center gap-2 md:hidden">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                const index = Math.max(availableTabShortcutOrder.indexOf(activeTab), 0);
+                const prev = (index - 1 + availableTabShortcutOrder.length) % availableTabShortcutOrder.length;
+                setActiveTab(availableTabShortcutOrder[prev]);
+              }}
+              aria-label="Попередній розділ"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
             <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger className="h-11 bg-white">
+              <SelectTrigger className="h-11 bg-white flex-1">
                 <SelectValue placeholder="Оберіть розділ" />
               </SelectTrigger>
               <SelectContent>
@@ -2057,10 +2072,24 @@ export default function Admin() {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                const index = Math.max(availableTabShortcutOrder.indexOf(activeTab), 0);
+                const next = (index + 1) % availableTabShortcutOrder.length;
+                setActiveTab(availableTabShortcutOrder[next]);
+              }}
+              aria-label="Наступний розділ"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
 
           <TabsList className="sticky top-16 z-20 hidden md:flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
             <TabsTrigger value="dashboard">Огляд</TabsTrigger>
+            <TabsTrigger value="analytics">Аналітика</TabsTrigger>
             <TabsTrigger value="consultations">Консультації</TabsTrigger>
             <TabsTrigger value="completed">Завершені</TabsTrigger>
             <TabsTrigger value="confirmed">Підтверджені</TabsTrigger>
@@ -2088,6 +2117,72 @@ export default function Admin() {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Швидкі дії</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                <Button variant="outline" className="justify-start" onClick={() => setActiveTab("consultations")}>Перейти до консультацій</Button>
+                <Button variant="outline" className="justify-start" onClick={() => setActiveTab("calendar")}>Відкрити календар</Button>
+                <Button variant="outline" className="justify-start" onClick={() => setActiveTab("payments")}>Перевірити платежі</Button>
+                <Button variant="outline" className="justify-start" onClick={() => setActiveTab("inbox")}>Відкрити вхідні</Button>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Активні консультації</p>
+                <p className="text-2xl font-semibold mt-1">{activeConsultations.length}</p>
+              </div>
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Непрочитані повідомлення</p>
+                <p className="text-2xl font-semibold mt-1">{unreadNotificationsCount}</p>
+              </div>
+              <div className="rounded-lg border p-3 bg-muted/20">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Заплановано на день</p>
+                <p className="text-2xl font-semibold mt-1">{calendarItems.length}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Останні заявки</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {latestBookings.slice(0, 6).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveTab("consultations")}
+                      className="w-full text-left rounded-md border p-2 hover:bg-muted/40"
+                    >
+                      <p className="text-sm font-medium">{item.firstName} {item.lastName || ""}</p>
+                      <p className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)} · {item.status}</p>
+                    </button>
+                  ))}
+                  {!latestBookings.length && <p className="text-sm text-muted-foreground">Заявок поки немає.</p>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Останні сповіщення</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {visibleNotifications.slice(0, 6).map((item) => (
+                    <div key={item.id} className="rounded-md border p-2">
+                      <p className="text-sm font-medium">{item.type}</p>
+                      <p className="text-xs text-muted-foreground">{item.channel} · {formatDateTime(item.createdAt)}</p>
+                    </div>
+                  ))}
+                  {!visibleNotifications.length && <p className="text-sm text-muted-foreground">Нових сповіщень немає.</p>}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-4">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
