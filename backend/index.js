@@ -13,6 +13,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import PDFDocument from 'pdfkit';
+import nodemailer from 'nodemailer';
 
 
 dotenv.config();
@@ -35,6 +36,87 @@ const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const COOKIE_SECURE = NODE_ENV === 'production';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || `http://localhost:${PORT}`;
 const ALLOW_ONRENDER_ORIGINS = String(process.env.ALLOW_ONRENDER_ORIGINS || 'true').toLowerCase() === 'true';
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || '';
+const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+const SMTP_ENABLED = Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && SMTP_FROM);
+
+let smtpTransporter = null;
+
+const getSmtpTransporter = () => {
+  if (!SMTP_ENABLED) return null;
+  if (smtpTransporter) return smtpTransporter;
+  smtpTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+  return smtpTransporter;
+};
+
+const buildEmailContent = ({ type, payload, recipient }) => {
+  const normalized = payload && typeof payload === 'object' ? payload : parseJsonSafely(payload) || {};
+  const fallbackSubject = `FinOK сповіщення: ${type}`;
+  const defaultMessage = normalized?.message
+    || 'Нове службове сповіщення від FinOK CRM.';
+
+  const map = {
+    'worker.invite': {
+      subject: 'Запрошення до FinOK CRM',
+      text: `Вас запрошено до FinOK CRM.\n\nПосилання: ${normalized?.inviteLink || '—'}\nРоль: ${normalized?.role || '—'}\nТермін дії: ${normalized?.expiresIn || '7d'}`,
+    },
+    'consultation.created.client': {
+      subject: 'Заявку отримано',
+      text: defaultMessage,
+    },
+    'consultation.confirmed.client': {
+      subject: 'Консультацію підтверджено',
+      text: defaultMessage,
+    },
+    'consultation.status.changed.client': {
+      subject: 'Оновлення статусу консультації',
+      text: defaultMessage,
+    },
+    'automation.reminder-24h': {
+      subject: 'Нагадування про консультацію',
+      text: defaultMessage,
+    },
+    'automation.payment-reminder': {
+      subject: 'Нагадування про оплату',
+      text: defaultMessage,
+    },
+    'automation.followup-pending': {
+      subject: 'Нагадування щодо вашої заявки',
+      text: defaultMessage,
+    },
+    'automation.omni-followup': {
+      subject: 'Нагадування від FinOK',
+      text: defaultMessage,
+    },
+    'inbox.manual': {
+      subject: normalized?.subject || 'Повідомлення від FinOK',
+      text: normalized?.message || defaultMessage,
+    },
+  };
+
+  const selected = map[type] || {
+    subject: normalized?.subject || fallbackSubject,
+    text: defaultMessage,
+  };
+
+  return {
+    subject: selected.subject,
+    text: selected.text,
+    recipient,
+  };
+};
 
 const buildCookieOptions = (maxAgeMs) => ({
   httpOnly: true,
@@ -209,6 +291,55 @@ const queueNotification = async ({ consultationId = null, userId = null, channel
       },
     });
     console.log(`[notification:${channel}] ${type}`, payload || '');
+
+    if (channel !== 'email') {
+      return record;
+    }
+
+    if (!recipient) {
+      await prisma.notificationLog.update({
+        where: { id: record.id },
+        data: { status: 'failed' },
+      });
+      return { ...record, status: 'failed' };
+    }
+
+    if (!SMTP_ENABLED) {
+      console.warn('Email skipped: SMTP is not configured.');
+      await prisma.notificationLog.update({
+        where: { id: record.id },
+        data: { status: 'failed' },
+      });
+      return { ...record, status: 'failed' };
+    }
+
+    try {
+      const transporter = getSmtpTransporter();
+      const content = buildEmailContent({ type, payload, recipient });
+      await transporter.sendMail({
+        from: SMTP_FROM,
+        to: content.recipient,
+        subject: content.subject,
+        text: content.text,
+      });
+
+      const sentRecord = await prisma.notificationLog.update({
+        where: { id: record.id },
+        data: {
+          status: 'sent',
+          sentAt: new Date(),
+        },
+      });
+      return sentRecord;
+    } catch (sendError) {
+      console.warn('Email send failed:', sendError?.message || sendError);
+      await prisma.notificationLog.update({
+        where: { id: record.id },
+        data: { status: 'failed' },
+      });
+      return { ...record, status: 'failed' };
+    }
+
     return record;
   } catch (error) {
     console.warn('Notification queue failed:', error?.message || error);
@@ -2681,7 +2812,7 @@ app.get('/api/admin/calendar/sync/providers', authMiddleware, requireRole(['ADMI
 
 app.get('/api/admin/calendar/sync/google/connect-url', authMiddleware, requireRole(['ADMIN', 'MANAGER']), asyncHandler(async (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${allowedOrigins[0] || 'http://localhost:5173'}/admin/calendar/google/callback`;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${allowedOrigins[0] || 'http://localhost:5173'}/admin`;
   if (!clientId) {
     res.json({ enabled: false, message: 'Google sync is not configured' });
     return;

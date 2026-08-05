@@ -404,6 +404,11 @@ export default function Admin() {
     role: "MANAGER",
     password: "",
   });
+  const [workerInviteForm, setWorkerInviteForm] = useState({
+    email: "",
+    role: "MANAGER",
+  });
+  const [lastWorkerProvision, setLastWorkerProvision] = useState(null);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState("DAY");
   const [calendarDrafts, setCalendarDrafts] = useState({});
@@ -578,12 +583,31 @@ export default function Admin() {
 
   const createWorkerMutation = useMutation({
     mutationFn: (payload) => apiClient.admin.workers.create(payload),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setWorkerForm({ firstName: "", lastName: "", email: "", phone: "", role: "MANAGER", password: "" });
+      setLastWorkerProvision({
+        email: result?.email || "",
+        generatedPassword: result?.generatedPassword || null,
+      });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin-workers"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-stats"] }),
       ]);
+    },
+  });
+
+  const inviteWorkerMutation = useMutation({
+    mutationFn: (payload) => apiClient.admin.workers.invite(payload),
+    onSuccess: (result) => {
+      setWorkerInviteForm((prev) => ({ ...prev, email: "" }));
+      setLastWorkerProvision({
+        email: result?.email || "",
+        inviteLink: result?.inviteLink || null,
+        generatedPassword: null,
+      });
+    },
+    onError: (error) => {
+      alert(`Не вдалося сформувати запрошення. ${error?.body || "Спробуйте ще раз."}`);
     },
   });
 
@@ -1779,6 +1803,22 @@ export default function Admin() {
       phone: workerForm.phone || null,
       role: workerForm.role,
       password: workerForm.password || undefined,
+    });
+  };
+
+  const submitWorkerInvite = (e) => {
+    e.preventDefault();
+    if (!capabilities.manageWorkers) {
+      alert("Недостатньо прав для запрошення працівника");
+      return;
+    }
+    if (!workerInviteForm.email.trim()) {
+      alert("Вкажіть email працівника");
+      return;
+    }
+    inviteWorkerMutation.mutate({
+      email: workerInviteForm.email.trim(),
+      role: workerInviteForm.role,
     });
   };
 
@@ -3297,9 +3337,59 @@ export default function Admin() {
 
                 <div className="mb-5 p-3 rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
                   {capabilities.manageWorkers
-                    ? "Формування посилань приховано. До керування запрошеннями повернемося пізніше."
+                    ? "Доступні 2 варіанти: швидке створення акаунта або запрошення працівника через email-посилання."
                     : "У вас доступ лише для перегляду працівників. Зміни може вносити адміністратор."}
                 </div>
+
+                <form onSubmit={submitWorkerInvite} className="grid grid-cols-1 md:grid-cols-[1fr_220px_auto] gap-2 mb-4">
+                  <Input
+                    type="email"
+                    placeholder="Email для запрошення"
+                    value={workerInviteForm.email}
+                    onChange={(e) => setWorkerInviteForm((prev) => ({ ...prev, email: e.target.value }))}
+                    disabled={!capabilities.manageWorkers}
+                    required
+                  />
+                  <Select value={workerInviteForm.role} onValueChange={(value) => setWorkerInviteForm((prev) => ({ ...prev, role: value }))}>
+                    <SelectTrigger disabled={!capabilities.manageWorkers}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MANAGER">Менеджер</SelectItem>
+                      <SelectItem value="ACCOUNTANT">Бухгалтер</SelectItem>
+                      <SelectItem value="VIEWER">Спостерігач</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="submit" variant="outline" disabled={inviteWorkerMutation.isPending || !capabilities.manageWorkers}>
+                    {inviteWorkerMutation.isPending ? "Формування..." : "Надіслати запрошення"}
+                  </Button>
+                </form>
+
+                {lastWorkerProvision ? (
+                  <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3 text-sm space-y-2">
+                    <p className="font-medium">Остання операція по працівнику</p>
+                    {lastWorkerProvision.email ? <p>Email: {lastWorkerProvision.email}</p> : null}
+                    {lastWorkerProvision.generatedPassword ? (
+                      <p>Згенерований пароль: <span className="font-mono">{lastWorkerProvision.generatedPassword}</span></p>
+                    ) : null}
+                    {lastWorkerProvision.inviteLink ? (
+                      <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                        <Input value={lastWorkerProvision.inviteLink} readOnly />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(lastWorkerProvision.inviteLink);
+                            } catch {
+                              alert("Не вдалося скопіювати посилання");
+                            }
+                          }}
+                        >
+                          Скопіювати
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <form onSubmit={submitWorker} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   <Input placeholder="Ім'я" value={workerForm.firstName} onChange={(e) => setWorkerForm((p) => ({ ...p, firstName: e.target.value }))} required disabled={!capabilities.manageWorkers} />
