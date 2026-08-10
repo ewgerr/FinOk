@@ -107,7 +107,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
 
   useEffect(() => {
     const loadSlots = async () => {
-      if (!form.preferredDate) {
+      if (!form.preferredDate || freeOnly) {
         setSlots([]);
         setForm((prev) => ({ ...prev, selectedSlot: "" }));
         return;

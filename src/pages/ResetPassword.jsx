@@ -26,6 +26,7 @@ export default function ResetPassword() {
     setLoading(true);
     try {
       await apiClient.auth.resetPassword({ resetToken, newPassword });
+      apiClient.auth.logout(); // Clear any existing session
       window.location.href = "/login";
     } catch (err) {
       setError(err.message || "Failed to reset password");

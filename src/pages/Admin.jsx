@@ -8,10 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAuth } from "@/lib/AuthContext";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
+import AdminSidebar from "@/components/AdminSidebar";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import { Loader2, RefreshCw, Shield, Users, Bell, History, CalendarRange, Clock3, Star, MessageSquare, CheckCircle, XCircle, Trash2, Briefcase, UserPlus, ClipboardList, BarChart3, TrendingUp, Newspaper, Copy, Mail, Send, Wallet, UserRound, Search, ArrowUpRight, ArrowDownRight, DollarSign, UserCheck, Target, ChevronLeft, ChevronRight, GripVertical, Inbox, Workflow, FileText, Bot, Link2 } from "lucide-react";
 
@@ -395,6 +395,7 @@ export default function Admin() {
   const capabilities = ROLE_CAPABILITIES[user?.role] || ROLE_CAPABILITIES.VIEWER;
   const isAdminRole = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [filters, setFilters] = useState({ consultationType: "", status: "", confirmationType: "", search: "" });
   const [workerForm, setWorkerForm] = useState({
     firstName: "",
@@ -608,6 +609,14 @@ export default function Admin() {
     },
     onError: (error) => {
       alert(`Не вдалося сформувати запрошення. ${error?.body || "Спробуйте ще раз."}`);
+    },
+  });
+
+  const updateWorkerMutation = useMutation({
+    mutationFn: ({ id, payload }) => apiClient.admin.workers.update(id, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-workers"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-audit-logs"] });
     },
   });
 
@@ -855,23 +864,21 @@ export default function Admin() {
 
   const adminTabs = useMemo(() => {
     const tabs = [
-      { value: "dashboard", label: "Огляд" },
-      { value: "analytics", label: "Аналітика" },
-      { value: "consultations", label: "Консультації" },
-      { value: "completed", label: "Завершені" },
-      { value: "confirmed", label: "Підтверджені" },
-      { value: "pipeline", label: "Воронка" },
-      { value: "clients", label: "Клієнти" },
-      { value: "payments", label: "Платежі" },
-      { value: "inbox", label: "Вхідні" },
-      { value: "automations", label: "Автоматизації" },
-      { value: "ai", label: "ШІ" },
-      { value: "crm", label: "CRM" },
-      { value: "calendar", label: "Календар" },
-      { value: "documents", label: "Документи" },
+      { value: "dashboard", label: "Огляд", icon: BarChart3 },
+      { value: "analytics", label: "Аналітика", icon: TrendingUp },
+      { value: "consultations", label: "Консультації", icon: ClipboardList },
+      { value: "pipeline", label: "Воронка", icon: Users },
+      { value: "clients", label: "Клієнти", icon: UserRound },
+      { value: "payments", label: "Платежі", icon: Wallet },
+      { value: "inbox", label: "Вхідні", icon: Inbox },
+      { value: "automations", label: "Автоматизації", icon: Workflow },
+      { value: "ai", label: "ШІ-помічник", icon: Bot },
+      { value: "crm", label: "CRM", icon: Briefcase },
+      { value: "calendar", label: "Календар", icon: CalendarRange },
+      { value: "documents", label: "Документи", icon: FileText },
       ...(capabilities.manageBlog ? [{ value: "blog", label: "Блог" }] : []),
       ...(capabilities.manageReviews ? [{ value: "reviews", label: "Відгуки" }] : []),
-      { value: "notifications", label: `Повідомлення${unreadNotificationsCount ? ` (${unreadNotificationsCount})` : ""}` },
+      { value: "notifications", label: "Повідомлення" },
       ...(capabilities.viewAudit ? [{ value: "audit", label: "Аудит" }] : []),
       { value: "filters", label: "Фільтри" },
     ];
@@ -886,6 +893,15 @@ export default function Admin() {
     return Array.from(folders).sort((a, b) => a.localeCompare(b, "uk"));
   }, [documents]);
 
+  const availableWorkerRoles = useMemo(() => {
+    const roles = [
+      { value: "MANAGER", label: "Менеджер" },
+      { value: "ACCOUNTANT", label: "Бухгалтер" },
+      { value: "VIEWER", label: "Спостерігач" },
+    ];
+    if (user?.role === "SUPER_ADMIN") roles.unshift({ value: "ADMIN", label: "Адміністратор" });
+    return roles;
+  }, [user?.role]);
   const selectedDocument = useMemo(() => {
     if (!documents.length) return null;
     return documents.find((item) => item.id === selectedDocumentId) || documents[0];
@@ -948,6 +964,11 @@ export default function Admin() {
     if (!clientCards.length) return null;
     return clientCards.find((c) => c.key === selectedClientKey) || clientCards[0];
   }, [clientCards, selectedClientKey]);
+
+  const handleWorkerRoleChange = (workerId, newRole) => {
+    if (!capabilities.manageWorkers) return;
+    updateWorkerMutation.mutate({ id: workerId, payload: { role: newRole } });
+  };
 
   const averageCheckByEmail = useMemo(() => {
     const map = new Map();
@@ -2038,8 +2059,9 @@ export default function Admin() {
   }, [activeTab, availableTabShortcutOrder]);
 
   return (
-    <div className="pt-24 pb-16 bg-gradient-to-b from-white to-slate-50/70">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-8">
+    <div className="flex min-h-screen bg-gradient-to-b from-white to-slate-50/70">
+      <AdminSidebar tabs={adminTabs} activeTab={activeTab} setActiveTab={setActiveTab} unreadNotificationsCount={unreadNotificationsCount} isCollapsed={isSidebarCollapsed} setIsCollapsed={setIsSidebarCollapsed} />
+      <main className="flex-1 p-4 md:p-6 space-y-8 overflow-y-auto">
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Адмін-панель</p>
@@ -2087,77 +2109,10 @@ export default function Admin() {
           ))}
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="flex items-center gap-2 md:hidden">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              onClick={() => {
-                const index = Math.max(availableTabShortcutOrder.indexOf(activeTab), 0);
-                const prev = (index - 1 + availableTabShortcutOrder.length) % availableTabShortcutOrder.length;
-                setActiveTab(availableTabShortcutOrder[prev]);
-              }}
-              aria-label="Попередній розділ"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Select value={activeTab} onValueChange={setActiveTab}>
-              <SelectTrigger className="h-11 bg-white flex-1">
-                <SelectValue placeholder="Оберіть розділ" />
-              </SelectTrigger>
-              <SelectContent>
-                {adminTabs.map((tab) => (
-                  <SelectItem key={tab.value} value={tab.value}>{tab.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              onClick={() => {
-                const index = Math.max(availableTabShortcutOrder.indexOf(activeTab), 0);
-                const next = (index + 1) % availableTabShortcutOrder.length;
-                setActiveTab(availableTabShortcutOrder[next]);
-              }}
-              aria-label="Наступний розділ"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <TabsList className="sticky top-16 z-20 hidden md:flex w-full flex-wrap gap-2 overflow-x-auto rounded-xl border border-border/80 bg-white/90 p-2 h-auto backdrop-blur">
-            <TabsTrigger value="dashboard">Огляд</TabsTrigger>
-            <TabsTrigger value="analytics">Аналітика</TabsTrigger>
-            <TabsTrigger value="consultations">Консультації</TabsTrigger>
-            <TabsTrigger value="completed">Завершені</TabsTrigger>
-            <TabsTrigger value="confirmed">Підтверджені</TabsTrigger>
-            <TabsTrigger value="pipeline">Воронка</TabsTrigger>
-            <TabsTrigger value="clients">Клієнти</TabsTrigger>
-            <TabsTrigger value="payments">Платежі</TabsTrigger>
-            <TabsTrigger value="inbox">Вхідні</TabsTrigger>
-            <TabsTrigger value="automations">Автоматизації</TabsTrigger>
-            <TabsTrigger value="ai">ШІ</TabsTrigger>
-            <TabsTrigger value="crm">CRM</TabsTrigger>
-            <TabsTrigger value="calendar">Календар</TabsTrigger>
-            <TabsTrigger value="documents">Документи</TabsTrigger>
-            {capabilities.manageBlog ? <TabsTrigger value="blog">Блог</TabsTrigger> : null}
-            {capabilities.manageReviews ? <TabsTrigger value="reviews">Відгуки</TabsTrigger> : null}
-            <TabsTrigger value="notifications" className="gap-2">
-              Повідомлення
-              {unreadNotificationsCount > 0 ? (
-                <span className="inline-flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[11px] leading-none">
-                  {unreadNotificationsCount}
-                </span>
-              ) : null}
-            </TabsTrigger>
-            {capabilities.viewAudit ? <TabsTrigger value="audit">Аудит</TabsTrigger> : null}
-            <TabsTrigger value="filters">Фільтри</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="dashboard" className="space-y-4">
-            <Card>
+        <div className="space-y-6">
+          {activeTab === 'dashboard' && (
+            <div className="space-y-4">
+             <Card>
               <CardHeader>
                 <CardTitle>Швидкі дії</CardTitle>
               </CardHeader>
@@ -2362,9 +2317,10 @@ export default function Admin() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="consultations" className="space-y-4">
+          {activeTab === 'consultations' && (
+            <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Консультації</CardTitle>
@@ -2523,9 +2479,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="completed" className="space-y-4">
+          {activeTab === 'completed' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CheckCircle className="w-5 h-5" /> Завершені клієнти</CardTitle>
@@ -2564,9 +2521,10 @@ export default function Admin() {
                 {!completedConsultations.length && <p className="text-sm text-muted-foreground">Поки немає завершених клієнтів.</p>}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="confirmed" className="space-y-4">
+          {activeTab === 'confirmed' && (
+            <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CheckCircle className="w-5 h-5" /> Підтверджені консультації</CardTitle>
@@ -2625,9 +2583,10 @@ export default function Admin() {
                 {!confirmedConsultations.length && <p className="text-sm text-muted-foreground">Поки немає підтверджених консультацій.</p>}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="pipeline" className="space-y-4">
+          {activeTab === 'pipeline' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Воронка заявок</CardTitle>
@@ -2788,9 +2747,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="clients" className="space-y-4">
+          {activeTab === 'clients' && (
+            <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><UserRound className="w-5 h-5" /> Картка клієнта 360</CardTitle>
@@ -2981,9 +2941,10 @@ export default function Admin() {
                 {!clientCards.length && <p className="text-sm text-muted-foreground">Картки клієнтів поки порожні.</p>}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="payments" className="space-y-4">
+          {activeTab === 'payments' && ( <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-lg border p-3 bg-muted/20">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Середній чек (усі клієнти)</p>
@@ -3087,9 +3048,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="inbox" className="space-y-4">
+          {activeTab === 'inbox' && (
+            <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Inbox className="w-5 h-5" /> Єдиний центр повідомлень</CardTitle>
@@ -3201,9 +3163,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="automations" className="space-y-4">
+          {activeTab === 'automations' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Workflow className="w-5 h-5" /> Центр автоматизацій</CardTitle>
@@ -3316,9 +3279,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="crm" className="space-y-4">
+          {activeTab === 'crm' && ( <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               <StatCard title="Клієнтів у базі" value={stats.totalClients ?? 0} icon={Users} subtitle="Унікальні клієнти за email" />
               <StatCard title="Працівники" value={stats.workersCount ?? workers.length} icon={Briefcase} subtitle="Менеджери / відповідальні" />
@@ -3353,9 +3317,9 @@ export default function Admin() {
                   <Select value={workerInviteForm.role} onValueChange={(value) => setWorkerInviteForm((prev) => ({ ...prev, role: value }))}>
                     <SelectTrigger disabled={!capabilities.manageWorkers}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MANAGER">Менеджер</SelectItem>
-                      <SelectItem value="ACCOUNTANT">Бухгалтер</SelectItem>
-                      <SelectItem value="VIEWER">Спостерігач</SelectItem>
+                      {availableWorkerRoles.map(role => (
+                        <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Button type="submit" variant="outline" disabled={inviteWorkerMutation.isPending || !capabilities.manageWorkers}>
@@ -3399,9 +3363,9 @@ export default function Admin() {
                   <Select value={workerForm.role} onValueChange={(value) => setWorkerForm((p) => ({ ...p, role: value }))}>
                     <SelectTrigger disabled={!capabilities.manageWorkers}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="MANAGER">Менеджер</SelectItem>
-                      <SelectItem value="ACCOUNTANT">Бухгалтер</SelectItem>
-                      <SelectItem value="VIEWER">Спостерігач</SelectItem>
+                      {availableWorkerRoles.map(role => (
+                        <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Input placeholder="Пароль (опціонально)" value={workerForm.password} onChange={(e) => setWorkerForm((p) => ({ ...p, password: e.target.value }))} disabled={!capabilities.manageWorkers} />
@@ -3429,7 +3393,22 @@ export default function Admin() {
                             <p className="font-medium">{worker.firstName || '—'} {worker.lastName || ''}</p>
                             <p className="text-xs text-muted-foreground">{worker.email}</p>
                           </td>
-                          <td className="p-3"><Badge variant="outline">{worker.role}</Badge></td>
+                          <td className="p-3 min-w-[180px]">
+                            {capabilities.manageWorkers && worker.id !== user.id ? (
+                              <Select value={worker.role} onValueChange={(newRole) => handleWorkerRoleChange(worker.id, newRole)}>
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableWorkerRoles.map(role => (
+                                    <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge variant="outline">{worker.role}</Badge>
+                            )}
+                          </td>
                           <td className="p-3">{worker._count?.assignedConsultations ?? 0}</td>
                           <td className="p-3">{worker._count?.assignedTasks ?? 0}</td>
                         </tr>
@@ -3566,9 +3545,10 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="calendar" className="space-y-4">
+          {activeTab === 'calendar' && (
+            <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CalendarRange className="w-5 h-5" /> Календар записів</CardTitle>
@@ -3807,13 +3787,18 @@ export default function Admin() {
                   ))}
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
                   <Button
                     variant="outline"
                     onClick={() => fetchGoogleConnectMutation.mutate()}
                     disabled={fetchGoogleConnectMutation.isPending || !capabilities.manageCalendar}
                   >
-                    {fetchGoogleConnectMutation.isPending ? "Завантаження..." : "Отримати URL підключення"}
+                    {fetchGoogleConnectMutation.isPending
+                      ? "Завантаження..."
+                      : googleConnectData?.enabled
+                      ? "Оновити URL підключення"
+                      : "Отримати URL підключення"
+                    }
                   </Button>
                   {googleConnectData?.enabled && googleConnectData?.connectUrl ? (
                     <a
@@ -3821,9 +3806,14 @@ export default function Admin() {
                       target="_blank"
                       rel="noreferrer"
                       className="h-9 px-3 inline-flex items-center rounded-md border text-sm hover:bg-muted"
+                      title={googleConnectData.connectUrl}
                     >
                       Відкрити Google OAuth
                     </a>
+                  ) : googleConnectData && !googleConnectData.enabled ? (
+                    <p className="text-xs text-destructive">Інтеграція з Google вимкнена на бекенді. Зверніться до адміністратора.</p>
+                  ) : fetchGoogleConnectMutation.isError ? (
+                     <p className="text-xs text-destructive">Не вдалося отримати URL. Перевірте налаштування бекенду.</p>
                   ) : null}
                 </div>
 
@@ -3919,9 +3909,10 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="documents" className="space-y-4">
+          {activeTab === 'documents' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Модуль документів</CardTitle>
@@ -4215,9 +4206,9 @@ export default function Admin() {
                 {!reviews.length && <p className="text-sm text-muted-foreground">Поки немає відгуків.</p>}
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="notifications">
+          {activeTab === 'notifications' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5" /> Нові клієнти та розподіл</CardTitle>
@@ -4420,15 +4411,15 @@ export default function Admin() {
                 <p>• Адмін-сторінка вже готова для подальшого підключення призначення менеджерів та внутрішніх нотаток.</p>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
 
         {(statsQuery.isLoading || consultationsQuery.isLoading || notificationsQuery.isLoading || auditLogsQuery.isLoading || reviewsQuery.isLoading || workersQuery.isLoading || tasksQuery.isLoading || blogPostsQuery.isLoading || paymentsQuery.isLoading || documentsQuery.isLoading || inboxQuery.isLoading || automationTemplatesQuery.isLoading) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Завантаження даних...
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

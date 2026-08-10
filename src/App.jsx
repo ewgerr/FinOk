@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
+import { Outlet } from "react-router-dom";
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -32,7 +33,7 @@ import { ADMIN_PATH } from '@/lib/adminPath';
 const BACKEND_API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -172,24 +173,17 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
-  }
-
 
   // Render the main app
   return (
     <Routes>
-      <Route element={<AdminRoute />}>
-        <Route path={ADMIN_PATH} element={<Admin />} />
+      <Route element={<AdminRoute />}>{/* This route group handles auth for admin */}
+        <Route element={<AdminLayout />}>{/* This route group provides layout for admin pages */}
+          <Route path={ADMIN_PATH} element={<Admin />} />
+          {/* Add other admin-specific routes here if needed */}
+        </Route>
       </Route>
+
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/fop" element={<FOP />} />
@@ -214,6 +208,12 @@ const AuthenticatedApp = () => {
   );
 };
 
+const AdminLayout = () => {
+  // A simple layout wrapper for admin pages that don't need the main Navbar/Footer
+  return (
+    <Outlet />
+  );
+};
 
 function App() {
 
