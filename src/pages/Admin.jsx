@@ -2111,7 +2111,7 @@ export default function Admin() {
 
         <div className="space-y-6">
           {activeTab === 'dashboard' && (
-            <div className="space-y-4">
+             <div className="space-y-4">
              <Card>
               <CardHeader>
                 <CardTitle>Швидкі дії</CardTitle>
@@ -2174,10 +2174,11 @@ export default function Admin() {
                   {!visibleNotifications.length && <p className="text-sm text-muted-foreground">Нових сповіщень немає.</p>}
                 </CardContent>
               </Card>
-            </div>
-          </TabsContent>
+             </div>
+          )}
+          
 
-          <TabsContent value="analytics" className="space-y-4">
+          {activeTab === 'analytics' && ( <div className="space-y-4">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card className="shadow-sm border-border/80">
                 <CardHeader>
@@ -3210,9 +3211,9 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="ai" className="space-y-4">
+          {activeTab === 'blog' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bot className="w-5 h-5" /> ШІ-помічник</CardTitle>
@@ -4058,9 +4059,10 @@ export default function Admin() {
                 </Card>
               </CardContent>
             </Card>
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="blog" className="space-y-4">
+          {activeTab === 'blog' && ( <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Newspaper className="w-5 h-5" /> Блог та новини</CardTitle>
@@ -4157,9 +4159,9 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>)}
 
-          <TabsContent value="reviews">
+          {activeTab === 'reviews' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Відгуки ({reviews.filter(r => !r.isApproved).length} нових)</CardTitle>
@@ -4209,7 +4211,7 @@ export default function Admin() {
           )}
 
           {activeTab === 'notifications' && (
-            <Card>
+             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5" /> Нові клієнти та розподіл</CardTitle>
               </CardHeader>
@@ -4275,9 +4277,9 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="audit">
+          {activeTab === 'audit' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><History className="w-5 h-5" /> CRM аналітика та аудит</CardTitle>
@@ -4398,9 +4400,9 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="filters">
+          {activeTab === 'filters' && (
             <Card>
               <CardHeader>
                 <CardTitle>Підказки для керування</CardTitle>
