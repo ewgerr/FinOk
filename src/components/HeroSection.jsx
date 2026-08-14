@@ -28,7 +28,7 @@ export default function HeroSection({ heroImage }) {
             Фінансовий партнер для вашого бізнесу
           </h1>
           <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-10 max-w-xl">
-            ФОП · ТОВ · Дія Сіті · Гранти · НПО · Управлінський консалтинг — 100% онлайн, вся Україна
+            Ми допомагаємо підприємцям та компаніям звільнитися від фінансового хаосу, оптимізувати управлінський облік та знайти фінансування для розвитку бізнесу.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link to="/kontakty" className="inline-flex items-center justify-center px-7 py-3.5 bg-primary text-primary-foreground font-medium text-sm rounded hover:opacity-90 transition-opacity">

@@ -19,7 +19,7 @@ export default function About() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-primary mb-4">Про компанію</p>
               <h1 className="font-heading text-4xl lg:text-5xl tracking-tight mb-6">
-                Звільняємо підприємця від фінансового хаосу
+                Звільняємо бізнес від фінансового хаосу
               </h1>
               <div className="space-y-4 text-muted-foreground text-sm leading-relaxed">
                 <p>
