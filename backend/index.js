@@ -12,7 +12,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import fsp from 'fs/promises';
 import PDFDocument from 'pdfkit';
 import nodemailer from 'nodemailer';
 
@@ -21,17 +20,6 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const resolveSqliteDbPath = () => {
-  const raw = String(process.env.DATABASE_URL || '').trim();
-  if (raw.startsWith('file:')) {
-    const filePart = raw.replace(/^file:/, '');
-    return path.isAbsolute(filePart)
-      ? filePart
-      : path.resolve(__dirname, filePart);
-  }
-  return path.resolve(__dirname, 'dev.db');
-};
 
 const app = express();
 
@@ -642,11 +630,6 @@ const aiRunSchema = z.object({
   scenario: z.enum(['client-summary', 'next-action', 'reply-draft']),
   consultationId: z.string().optional().nullable(),
   input: z.string().max(4000).optional().nullable(),
-});
-
-const restoreBackupSchema = z.object({
-  fileName: z.string().max(255).optional().nullable(),
-  contentBase64: z.string().min(100),
 });
 
 const blogPostCreateSchema = z.object({
@@ -2009,62 +1992,6 @@ app.get('/api/admin/workers', authMiddleware, requireRole(['ADMIN', 'MANAGER', '
     orderBy: { createdAt: 'desc' },
   });
   res.json(workers);
-}));
-
-app.get('/api/admin/system/backup/download', authMiddleware, requireRole(['ADMIN']), asyncHandler(async (req, res) => {
-  const sourceDb = resolveSqliteDbPath();
-  const backupsDir = path.resolve(__dirname, 'backups');
-  await fsp.mkdir(backupsDir, { recursive: true });
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupFileName = `backup-${timestamp}.db`;
-  const targetPath = path.join(backupsDir, backupFileName);
-
-  await fsp.copyFile(sourceDb, targetPath);
-
-  await logAudit({
-    actorUserId: req.user.id,
-    entityType: 'SystemBackup',
-    entityId: backupFileName,
-    action: 'DOWNLOAD_BACKUP',
-    metadata: { sourceDb, targetPath },
-  });
-
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="${backupFileName}"`);
-  res.sendFile(targetPath);
-}));
-
-app.post('/api/admin/system/backup/restore', authMiddleware, requireRole(['ADMIN']), validateBody(restoreBackupSchema), asyncHandler(async (req, res) => {
-  const { fileName, contentBase64 } = req.body;
-  const sourceDb = resolveSqliteDbPath();
-  const restoreTmpPath = path.resolve(__dirname, 'backups', `restore-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.db`);
-  await fsp.mkdir(path.dirname(restoreTmpPath), { recursive: true });
-
-  const decoded = decodeDocumentBase64(contentBase64);
-  await fsp.writeFile(restoreTmpPath, decoded);
-
-  await prisma.$disconnect();
-  await fsp.copyFile(restoreTmpPath, sourceDb);
-  await prisma.$connect();
-
-  await logAudit({
-    actorUserId: req.user.id,
-    entityType: 'SystemBackup',
-    entityId: fileName || path.basename(restoreTmpPath),
-    action: 'RESTORE_BACKUP',
-    metadata: {
-      sourceDb,
-      restoreFileName: fileName || null,
-      restoreTmpPath,
-    },
-  });
-
-  res.json({
-    ok: true,
-    restoredFrom: fileName || 'uploaded-backup.db',
-    message: 'Базу даних відновлено з резервної копії.',
-  });
 }));
 
 app.post('/api/admin/workers', authMiddleware, requireRole(['ADMIN']), validateBody(workerCreateSchema), asyncHandler(async (req, res) => {

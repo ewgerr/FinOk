@@ -153,7 +153,7 @@ async function main() {
         isPaid: true,
         estimatedDuration: 45,
         preferredContactMethod: 'EMAIL',
-        serviceId: getService('Реєстрація ФОП')?.id || null,
+        serviceId: getService('Реєстрація')?.id || null,
         serviceCategory: 'ФОП',
         serviceName: 'Реєстрація ФОП під ключ',
         servicePriceText: 'від 1 500 ₴',

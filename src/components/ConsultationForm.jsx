@@ -136,7 +136,7 @@ export default function ConsultationForm({ preselectedCategory = "", preselected
 
     loadSlots();
   }, [form.preferredDate, selectedDuration]);
-
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     const needDirectContact = form.preferredContactMethod === "PHONE" || form.preferredContactMethod === "TELEGRAM";

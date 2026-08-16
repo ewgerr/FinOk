@@ -92,7 +92,7 @@ const AuthenticatedApp = () => {
     canonical.setAttribute("href", canonicalHref);
 
     const robots = ensureMeta("robots");
-    const shouldNoIndex = pathname.startsWith("/login") || pathname.startsWith("/register") || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password") || pathname.startsWith("/control-room");
+    const shouldNoIndex = pathname.startsWith("/login") || pathname.startsWith("/register") || pathname.startsWith("/forgot-password") || pathname.startsWith("/reset-password") || pathname.startsWith(ADMIN_PATH);
     robots.setAttribute("content", shouldNoIndex ? "noindex, nofollow" : "index, follow");
 
     ensurePropertyMeta("og:type").setAttribute("content", pathname.startsWith("/blog/") ? "article" : "website");
