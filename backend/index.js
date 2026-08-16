@@ -121,7 +121,7 @@ const buildEmailContent = ({ type, payload, recipient }) => {
 const buildCookieOptions = (maxAgeMs) => ({
   httpOnly: true,
   secure: COOKIE_SECURE,
-  sameSite: COOKIE_SECURE ? 'none' : 'lax',
+  sameSite: 'lax', // Default to lax
   path: '/',
   maxAge: maxAgeMs,
 });
@@ -192,8 +192,14 @@ const setAuthCookies = (res, { accessToken, refreshToken }) => {
   const accessMaxAgeMs = 15 * 60 * 1000;
   const refreshMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
-  res.cookie('finok_access_token', accessToken, buildCookieOptions(accessMaxAgeMs));
-  res.cookie('finok_refresh_token', refreshToken, buildCookieOptions(refreshMaxAgeMs));
+  const accessTokenOptions = buildCookieOptions(accessMaxAgeMs);
+  if (COOKIE_SECURE) accessTokenOptions.sameSite = 'none';
+
+  const refreshTokenOptions = buildCookieOptions(refreshMaxAgeMs);
+  if (COOKIE_SECURE) refreshTokenOptions.sameSite = 'none';
+
+  res.cookie('finok_access_token', accessToken, accessTokenOptions);
+  res.cookie('finok_refresh_token', refreshToken, refreshTokenOptions);
 };
 
 const clearAuthCookies = (res) => {
