@@ -121,7 +121,7 @@ const buildEmailContent = ({ type, payload, recipient }) => {
 const buildCookieOptions = (maxAgeMs) => ({
   httpOnly: true,
   secure: COOKIE_SECURE,
-  sameSite: COOKIE_SECURE ? 'none' : 'lax',
+  sameSite: COOKIE_SECURE ? 'None' : 'Lax',
   path: '/',
   maxAge: maxAgeMs,
 });
@@ -423,7 +423,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
   const bearerToken = authHeader?.startsWith('Bearer ')
     ? authHeader.replace('Bearer ', '').trim()
     : null;
-  const cookieToken = req.cookies?.finok_access_token || null;
+  const cookieToken = req.cookies?.finok_access_token;
   const token = bearerToken || cookieToken;
 
   if (!token) {
@@ -885,8 +885,8 @@ app.use(helmet());
 app.use(
   cors({
     origin(origin, callback) {
-      if (isAllowedOrigin(origin)) return callback(null, true);
-      return callback(new Error('CORS blocked')); 
+      if (!origin || isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error('CORS policy does not allow access from this origin'));
     },
     credentials: true,
   })
@@ -3612,10 +3612,6 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  if (err.message === 'CORS blocked') {
-    return res.status(403).json({ error: 'CORS policy blocked this origin' });
-  }
-
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       error: err.message,
