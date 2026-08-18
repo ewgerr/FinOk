@@ -1,9 +1,9 @@
 import { Telegraf, Markup } from 'telegraf';
-import { PrismaClient } from '@prisma/client';
+// import { PrismaClient } from '../backend/node_modules/@prisma/client/index.js';
 import { config } from './config.js';
-import { Markup } from 'telegraf';
 
-const prisma = new PrismaClient();
+
+//  const prisma = new PrismaClient();
 
 export const bot = new Telegraf(config.botToken);
 
