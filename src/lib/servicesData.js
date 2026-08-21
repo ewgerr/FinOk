@@ -1,6 +1,6 @@
 export const serviceCategories = [
  {
-   id: "tov",
+    id: "tov",
     slug: "/tov",
     title: "ЮРИДИЧНІ ОСОБИ",
     shortTitle: "Юридичні особи",
