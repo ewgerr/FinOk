@@ -81,7 +81,7 @@ export const serviceCategories = [
   id: "neprybutkovi-orhanizatsiyi",
   slug: "/neprybutkovi-orhanizatsiyi",
   title: "НЕПРИБУТКОВІ ТА ГРОМАДСЬКІ ОРГАНІЗАЦІЇ",
-  shortTitle: "НЕПРИБУТКОВІ ТА ГРОМАДСЬКІ ОРГАНІЗАЦІЇ",
+  shortTitle: "Неприбуткові організації",
   description: "Комплексний юридичний і бухгалтерський супровід ГО, БФ та асоціацій: від реєстрації й отримання ознаки неприбутковості до проходження донорських аудитів і фінансового менеджменту.",
   icon: "Users", // або "Building2", "HeartHandshake"
   services: [
