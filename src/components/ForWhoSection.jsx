@@ -16,7 +16,7 @@ export default function ForWhoSection() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="max-w-2xl mb-16">
           <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Для кого</p>
-          <h2 className="font-heading text-3xl lg:text-5xl tracking-tight">Працюємо з тими, хто будує</h2>
+          <h2 className="font-heading text-3xl lg:text-5xl tracking-tight">Працюємо з тими, хто йде своїм шляхом</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {segments.map((s, i) => (
