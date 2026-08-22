@@ -81,9 +81,9 @@ export const serviceCategories = [
   id: "neprybutkovi-orhanizatsiyi",
   slug: "/neprybutkovi-orhanizatsiyi",
   title: "НЕПРИБУТКОВІ ТА ГРОМАДСЬКІ ОРГАНІЗАЦІЇ",
-  shortTitle: "Неприбуткові організації",
+  shortTitle: "Неприбуткові та громадські організації",
   description: "Комплексний юридичний і бухгалтерський супровід ГО, БФ та асоціацій: від реєстрації й отримання ознаки неприбутковості до проходження донорських аудитів і фінансового менеджменту.",
-  icon: "Users", // або "Building2", "HeartHandshake"
+  icon: "Building2", // або "Building2", "HeartHandshake"
   services: [
     {
       name: "Реєстрація ГО або БО «під ключ»",
