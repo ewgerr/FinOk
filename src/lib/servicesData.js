@@ -110,7 +110,7 @@ export const serviceCategories = [
       name: "Супровід грантової звітності та донорський аудит",
       price: "від 6 000 ₴",
       durationMinutes: 60,
-      slug: "/npo/h回りgrant-audyt",
+      slug: "/npo/hgrant-audyt",
       description: "Підготовка фінансових звітів для українських та міжнародних донорів (USAID, EU тощо), перевірка первинних документів."
     },
     {
