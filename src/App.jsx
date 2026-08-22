@@ -15,6 +15,7 @@ import TOV from './pages/TOV';
 import ITDiyaCity from './pages/ITDiyaCity';
 import GrantyNPO from './pages/GrantyNPO';
 import Konsaltyng from './pages/Konsaltyng';
+import NeprybutkoviOrhanizatsiyi from './pages/Neprybutkovi-orhanizatsiyi';
 import Price from './pages/Price';
 import About from './pages/About';
 import Contacts from './pages/Contacts';
