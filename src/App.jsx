@@ -47,6 +47,7 @@ const AuthenticatedApp = () => {
       "/tov": { title: "Послуги для ТОВ — ФінОк", description: "Реєстрація та супровід ТОВ, зміни у складі, ліквідація." },
       "/it-diya-city": { title: "IT / Дія Сіті — ФінОк", description: "Консультації для IT-ФОП та компаній Дія Сіті." },
       "/granty-npo": { title: "Гранти та НПО — ФінОк", description: "Допомога з грантовими заявками, реєстрацією ГО/БФ та звітністю." },
+      "/neprybutkovi-orhanizatsiyi": { title: "НЕПРИБУТКОВІ ТА ГРОМАДСЬКІ ОРГАНІЗАЦІЇ — ФінОк", description: "Комплексний юридичний і бухгалтерський супровід ГО, БФ та асоціацій." },
       "/konsaltyng": { title: "Консалтинг — ФінОк", description: "Фінансові моделі, управлінський облік, KPI, бюджетування." },
       "/prajs": { title: "Прайс послуг — ФінОк", description: "Актуальна вартість послуг для ФОП, ТОВ, IT, НПО." },
       "/blog": { title: "Блог — ФінОк", description: "Статті та поради для підприємців." },
@@ -192,6 +193,7 @@ const AuthenticatedApp = () => {
         <Route path="/it-diya-city" element={<ITDiyaCity />} />
         <Route path="/granty-npo" element={<GrantyNPO />} />
         <Route path="/konsaltyng" element={<Konsaltyng />} />
+        <Route path="/neprybutkovi-orhanizatsiyi" element={<NeprybutkoviOrhanizatsiyi />} />
         <Route path="/prajs" element={<Price />} />
         <Route path="/pro-nas" element={<About />} />
         <Route path="/kontakty" element={<Contacts />} />
