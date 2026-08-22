@@ -15,7 +15,6 @@ import TOV from './pages/TOV';
 import ITDiyaCity from './pages/ITDiyaCity';
 import GrantyNPO from './pages/GrantyNPO';
 import Konsaltyng from './pages/Konsaltyng';
-import NeprybutkoviOrhanizatsiyi from './pages/NPO';
 import Price from './pages/Price';
 import About from './pages/About';
 import Contacts from './pages/Contacts';
@@ -28,6 +27,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Admin from './pages/Admin';
+import NeprybutkoviOrhanizatsiyi from './pages/Neprybutkovi-orhanizatsiyi';
 import AdminRoute from './components/AdminRoute';
 import { ADMIN_PATH } from '@/lib/adminPath';
 
