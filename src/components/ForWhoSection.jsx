@@ -2,12 +2,12 @@ import { User, Building2, Monitor, Heart, TrendingUp, Briefcase } from "lucide-r
 import { motion } from "framer-motion";
 
 const segments = [
-  { icon: TrendingUp, label: "Власники бізнесу", desc: "Управлінський облік, P&L, KPI" },
-  { icon: User, label: "Фізичні особи", desc: "Реєстрація, супровід, зміни, закриття" },
-  { icon: Building2, label: "Юридичні особи", desc: "Від реєстрації до ліквідації" },
+  { icon: TrendingUp, label: "Юридичні особи", desc: "Структура, оподаткування, звітність, податкові ризики, готовність до перевірок " },
+  { icon: User, label: "Фізичні особи-підприємці ", desc: "Реєстрація, супровід, зміни, закриття" },
+  { icon: Building2, label: "Власники бізнесу ", desc: "Управлінський облік, фінансові моделі, стратегія розвитку " },
   { icon: Monitor, label: "IT-фахівці", desc: "ФОП 3 групи, Дія Сіті, гіг-контракти" },
-  { icon: Heart, label: "НПО", desc: "ГО, БФ, неприбутковий статус" },
-  { icon: Briefcase, label: "Грантоотримувачі", desc: "«Власна справа» та інші програми" },
+  { icon: Heart, label: "Неприбуткові та громадські організації", desc: "Реєстрація, неприбутковий статус, звітність " },
+  { icon: Briefcase, label: "Грантоотримувачі", desc: "«Документи на грант, цільові витрати, звітність - зокрема «Власна справа" },
 ];
 
 export default function ForWhoSection() {
