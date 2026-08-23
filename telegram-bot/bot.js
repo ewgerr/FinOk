@@ -1,9 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
-// import { PrismaClient } from '../backend/node_modules/@prisma/client/index.js';
 import { config } from './config.js';
-
-
-//  const prisma = new PrismaClient();
 
 export const bot = new Telegraf(config.botToken);
 
@@ -49,9 +45,6 @@ function formatDate(date) {
 // ======================================================
 
 bot.start(async (ctx) => {
-
-  const user = ctx.from;
-
   await ctx.reply(
     `👋 <b>Вітаємо у FinOK!</b>
 
@@ -60,7 +53,6 @@ bot.start(async (ctx) => {
 Оберіть потрібну дію:`,
     {
       parse_mode: 'HTML',
-
       ...Markup.inlineKeyboard([
         [
           Markup.button.callback(
@@ -68,14 +60,12 @@ bot.start(async (ctx) => {
             'support'
           ),
         ],
-
         [
           Markup.button.callback(
             '📅 Записатися на консультацію',
             'consultation'
           ),
         ],
-
         [
           Markup.button.callback(
             '❓ Часті питання',
@@ -92,14 +82,12 @@ bot.start(async (ctx) => {
 // ======================================================
 
 bot.action('menu', async (ctx) => {
-
   await ctx.answerCbQuery();
 
   await ctx.reply(
     `👋 <b>Меню FinOK</b>`,
     {
       parse_mode: 'HTML',
-
       ...Markup.inlineKeyboard([
         [
           Markup.button.callback(
@@ -107,14 +95,12 @@ bot.action('menu', async (ctx) => {
             'support'
           ),
         ],
-
         [
           Markup.button.callback(
             '📅 Записатися',
             'consultation'
           ),
         ],
-
         [
           Markup.button.callback(
             '❓ FAQ',
@@ -131,28 +117,23 @@ bot.action('menu', async (ctx) => {
 // ======================================================
 
 bot.action('faq', async (ctx) => {
-
   await ctx.answerCbQuery();
 
   await ctx.reply(
     `❓ <b>Часті питання</b>
 
 <b>Як записатися на консультацію?</b>
-
 Перейдіть на сайт FinOK та створіть заявку.
 
 <b>Скільки коштує перша консультація?</b>
-
 Перша консультація є безкоштовною.
 
 <b>Як зв'язатися з менеджером?</b>
-
 Натисніть кнопку «Написати менеджеру».
 
 Якщо ви не знайшли відповідь — напишіть нам.`,
     {
       parse_mode: 'HTML',
-
       ...Markup.inlineKeyboard([
         [
           Markup.button.callback(
@@ -160,7 +141,6 @@ bot.action('faq', async (ctx) => {
             'support'
           ),
         ],
-
         [
           Markup.button.callback(
             '⬅️ Меню',
@@ -177,7 +157,6 @@ bot.action('faq', async (ctx) => {
 // ======================================================
 
 bot.action('consultation', async (ctx) => {
-
   await ctx.answerCbQuery();
 
   await ctx.reply(
@@ -188,7 +167,6 @@ bot.action('consultation', async (ctx) => {
 ${config.siteUrl}`,
     {
       parse_mode: 'HTML',
-
       ...Markup.inlineKeyboard([
         [
           Markup.button.url(
@@ -196,7 +174,6 @@ ${config.siteUrl}`,
             config.siteUrl
           ),
         ],
-
         [
           Markup.button.callback(
             '⬅️ Меню',
@@ -215,15 +192,9 @@ ${config.siteUrl}`,
 const supportSessions = new Map();
 
 bot.action('support', async (ctx) => {
-
   await ctx.answerCbQuery();
 
-  supportSessions.set(
-    ctx.from.id,
-    {
-      active: true,
-    }
-  );
+  supportSessions.set(ctx.from.id, { active: true });
 
   await ctx.reply(
     `💬 <b>Звернення до підтримки</b>
@@ -233,7 +204,6 @@ bot.action('support', async (ctx) => {
 Ваше повідомлення буде передано менеджеру.`,
     {
       parse_mode: 'HTML',
-
       ...Markup.inlineKeyboard([
         [
           Markup.button.callback(
@@ -251,7 +221,6 @@ bot.action('support', async (ctx) => {
 // ======================================================
 
 bot.action('cancel_support', async (ctx) => {
-
   await ctx.answerCbQuery();
 
   supportSessions.delete(ctx.from.id);
@@ -274,9 +243,7 @@ bot.action('cancel_support', async (ctx) => {
 // ======================================================
 
 bot.on('message', async (ctx, next) => {
-
   const userId = ctx.from.id;
-
   const session = supportSessions.get(userId);
 
   if (!session?.active) {
@@ -305,13 +272,11 @@ bot.on('message', async (ctx, next) => {
 ${escapeTelegram(text)}`;
 
   try {
-
     await bot.telegram.sendMessage(
       config.teamChatId,
       message,
       {
         parse_mode: 'HTML',
-
         ...Markup.inlineKeyboard([
           [
             Markup.button.callback(
@@ -319,7 +284,6 @@ ${escapeTelegram(text)}`;
               `reply:${userId}`
             ),
           ],
-
           [
             Markup.button.callback(
               '✅ Закрити',
@@ -338,19 +302,12 @@ ${escapeTelegram(text)}`;
         parse_mode: 'HTML',
       }
     );
-
   } catch (error) {
-
-    console.error(
-      'Telegram support error:',
-      error
-    );
+    console.error('Telegram support error:', error);
 
     await ctx.reply(
       '❌ Не вдалося передати повідомлення. Спробуйте ще раз.'
     );
-
-    return;
   }
 });
 
@@ -361,26 +318,15 @@ ${escapeTelegram(text)}`;
 const adminSessions = new Map();
 
 bot.action(/^reply:(.+)$/, async (ctx) => {
-
   if (!isAdmin(ctx.from.id)) {
-
-    await ctx.answerCbQuery(
-      '⛔ У вас немає доступу'
-    );
-
+    await ctx.answerCbQuery('⛔ У вас немає доступу');
     return;
   }
 
   await ctx.answerCbQuery();
-
   const userId = Number(ctx.match[1]);
 
-  adminSessions.set(
-    ctx.from.id,
-    {
-      userId,
-    }
-  );
+  adminSessions.set(ctx.from.id, { userId });
 
   await ctx.reply(
     `💬 Напишіть відповідь клієнту.
@@ -396,7 +342,6 @@ bot.action(/^reply:(.+)$/, async (ctx) => {
 // ======================================================
 
 bot.on('message', async (ctx, next) => {
-
   if (!isAdmin(ctx.from.id)) {
     return next();
   }
@@ -413,35 +358,21 @@ bot.on('message', async (ctx, next) => {
     '[Медіа]';
 
   try {
-
     await bot.telegram.sendMessage(
       session.userId,
-
       `👨‍💼 <b>Повідомлення від менеджера FinOK</b>
 
 ${escapeTelegram(text)}`,
-
       {
         parse_mode: 'HTML',
       }
     );
 
-    await ctx.reply(
-      '✅ Відповідь відправлено клієнту.'
-    );
-
+    await ctx.reply('✅ Відповідь відправлено клієнту.');
     adminSessions.delete(ctx.from.id);
-
   } catch (error) {
-
-    console.error(
-      'Admin reply error:',
-      error
-    );
-
-    await ctx.reply(
-      '❌ Не вдалося відправити повідомлення.'
-    );
+    console.error('Admin reply error:', error);
+    await ctx.reply('❌ Не вдалося відправити повідомлення.');
   }
 });
 
@@ -450,47 +381,31 @@ ${escapeTelegram(text)}`,
 // ======================================================
 
 bot.action(/^close:(.+)$/, async (ctx) => {
-
   if (!isAdmin(ctx.from.id)) {
-
-    await ctx.answerCbQuery(
-      '⛔ У вас немає доступу'
-    );
-
+    await ctx.answerCbQuery('⛔ У вас немає доступу');
     return;
   }
 
   await ctx.answerCbQuery();
-
   const userId = Number(ctx.match[1]);
 
   supportSessions.delete(userId);
 
   try {
-
     await bot.telegram.sendMessage(
       userId,
-
       `✅ <b>Ваше звернення закрито.</b>
 
 Якщо у вас виникнуть нові питання — звертайтеся до нас знову.`,
-
       {
         parse_mode: 'HTML',
       }
     );
-
   } catch (error) {
-
-    console.error(
-      'Close support error:',
-      error
-    );
+    console.error('Close support error:', error);
   }
 
-  await ctx.reply(
-    '✅ Звернення закрито.'
-  );
+  await ctx.reply('✅ Звернення закрито.');
 });
 
 // ======================================================
@@ -498,16 +413,11 @@ bot.action(/^close:(.+)$/, async (ctx) => {
 // ======================================================
 
 bot.on('text', async (ctx, next) => {
-
-  if (
-    ctx.message.text?.startsWith('/')
-  ) {
+  if (ctx.message.text?.startsWith('/')) {
     return next();
   }
 
-  if (
-    supportSessions.has(ctx.from.id)
-  ) {
+  if (supportSessions.has(ctx.from.id)) {
     return;
   }
 
@@ -520,14 +430,12 @@ bot.on('text', async (ctx, next) => {
           'support'
         ),
       ],
-
       [
         Markup.button.callback(
           '❓ FAQ',
           'faq'
         ),
       ],
-
       [
         Markup.button.callback(
           '📅 Записатися',
@@ -543,11 +451,5 @@ bot.on('text', async (ctx, next) => {
 // ======================================================
 
 bot.catch((error, ctx) => {
-
-  console.error(
-    'Telegram bot error:',
-    error,
-    'Update:',
-    ctx?.update
-  );
+  console.error('Telegram bot error:', error, 'Update:', ctx?.update);
 });

@@ -1,7 +1,10 @@
-import { PrismaClient } from '../backend/node_modules/@prisma/client/index.js';
+import { createRequire } from 'module';
 import { bot } from './bot.js';
 import { config } from './config.js';
 import { Markup } from 'telegraf';
+
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require('../backend/node_modules/@prisma/client');
 
 const prisma = new PrismaClient();
 
@@ -10,13 +13,8 @@ const prisma = new PrismaClient();
 // ======================================================
 
 function parsePayload(payload) {
-  if (!payload) {
-    return {};
-  }
-
-  if (typeof payload === 'object') {
-    return payload;
-  }
+  if (!payload) return {};
+  if (typeof payload === 'object') return payload;
 
   try {
     return JSON.parse(payload);
@@ -27,20 +25,14 @@ function parsePayload(payload) {
 }
 
 function formatDate(date) {
-  if (!date) {
-    return 'Не вказано';
-  }
-
+  if (!date) return 'Не вказано';
   return new Date(date).toLocaleString('uk-UA', {
     timeZone: 'Europe/Kyiv',
   });
 }
 
 function escape(text) {
-  if (text === null || text === undefined) {
-    return '';
-  }
-
+  if (text === null || text === undefined) return '';
   return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -176,21 +168,12 @@ async function processNotification(notification) {
 
   const payload = parsePayload(notification.payload);
 
-  console.log(
-    `📨 Processing Telegram notification: ${notification.id}`
-  );
-
-  console.log(
-    `   Type: ${notification.type}`
-  );
-
-  console.log(
-    `   Chat ID: ${config.teamChatId}`
-  );
+  console.log(`📨 Processing Telegram notification: ${notification.id}`);
+  console.log(`   Type: ${notification.type}`);
+  console.log(`   Chat ID: ${config.teamChatId}`);
 
   try {
     switch (notification.type) {
-
       case 'consultation.created.team':
         await sendConsultationNotification(notification);
         break;
@@ -202,59 +185,32 @@ async function processNotification(notification) {
       default:
         await bot.telegram.sendMessage(
           config.teamChatId,
-
-          `🔔 <b>FinOK notification</b>
-
-Тип:
-<code>${escape(notification.type)}</code>
-
-${escape(
-  JSON.stringify(payload, null, 2)
-)}`,
-
-          {
-            parse_mode: 'HTML',
-          }
+          `🔔 <b>FinOK notification</b>\n\nТип:\n<code>${escape(notification.type)}</code>\n\n${escape(
+            JSON.stringify(payload, null, 2)
+          )}`,
+          { parse_mode: 'HTML' }
         );
     }
 
     await prisma.notificationLog.update({
-      where: {
-        id: notification.id,
-      },
-
+      where: { id: notification.id },
       data: {
         status: 'sent',
         sentAt: new Date(),
       },
     });
 
-    console.log(
-      `✅ Telegram notification sent: ${notification.id}`
-    );
-
+    console.log(`✅ Telegram notification sent: ${notification.id}`);
   } catch (error) {
-
-    console.error(
-      `❌ Telegram notification failed: ${notification.id}`,
-      error
-    );
+    console.error(`❌ Telegram notification failed: ${notification.id}`, error);
 
     try {
       await prisma.notificationLog.update({
-        where: {
-          id: notification.id,
-        },
-
-        data: {
-          status: 'failed',
-        },
+        where: { id: notification.id },
+        data: { status: 'failed' },
       });
     } catch (dbError) {
-      console.error(
-        '❌ Failed to update notification status:',
-        dbError
-      );
+      console.error('❌ Failed to update notification status:', dbError);
     }
   }
 }
@@ -264,20 +220,13 @@ ${escape(
 // ======================================================
 
 export async function startNotificationWorker() {
+  console.log('📨 Telegram notification worker started');
 
-  console.log(
-    '📨 Telegram notification worker started'
-  );
-
-  // Обробити одразу при запуску
   await processQueuedNotifications();
 
-  setInterval(
-    async () => {
-      await processQueuedNotifications();
-    },
-    config.pollInterval
-  );
+  setInterval(async () => {
+    await processQueuedNotifications();
+  }, config.pollInterval);
 }
 
 // ======================================================
@@ -285,46 +234,24 @@ export async function startNotificationWorker() {
 // ======================================================
 
 async function processQueuedNotifications() {
-
   try {
-
-    const notifications =
-      await prisma.notificationLog.findMany({
-
-        where: {
-          channel: 'telegram',
-          status: 'queued',
-        },
-
-        orderBy: {
-          createdAt: 'asc',
-        },
-
-        take: 20,
-      });
+    const notifications = await prisma.notificationLog.findMany({
+      where: {
+        channel: 'telegram',
+        status: 'queued',
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    });
 
     if (notifications.length > 0) {
-
-      console.log(
-        `📨 Found ${notifications.length} queued Telegram notification(s)`
-      );
-
+      console.log(`📨 Found ${notifications.length} queued Telegram notification(s)`);
     }
 
     for (const notification of notifications) {
-
-      await processNotification(
-        notification
-      );
-
+      await processNotification(notification);
     }
-
   } catch (error) {
-
-    console.error(
-      '❌ Notification worker error:',
-      error
-    );
-
+    console.error('❌ Notification worker error:', error);
   }
 }
