@@ -35,9 +35,9 @@ export default function ServicePageTemplate({ category }) {
                     <h3 className="font-heading text-xl mb-2">{s.name}</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">{s.description}</p>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
+                  {/* <div className="flex items-center gap-4 shrink-0">
                     <span className="text-lg font-heading text-primary whitespace-nowrap">{s.price}</span>
-                  </div>
+                  </div> */}
                 </div>
               </motion.div>
             ))}
