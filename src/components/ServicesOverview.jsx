@@ -31,7 +31,7 @@ export default function ServicesOverview() {
                   <div className="flex items-center gap-5">
                     <Icon className="w-5 h-5 text-primary shrink-0" />
                     <div>
-                      <h3 className="font-heading text-lg font-semibold text-gray-900">{cat.title}</h3>
+                      <h3 className="font-heading text-lg">{cat.title}</h3>
                       <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">{cat.description}</p>
                     </div>
                   </div>
