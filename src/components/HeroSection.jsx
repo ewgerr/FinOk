@@ -24,13 +24,13 @@ export default function HeroSection({ heroImage }) {
           <p className="text-xs uppercase tracking-[0.3em] text-primary mb-6 font-medium">
             Управлінський та фінансово-консалтинговий центр
           </p>
-          <h1 className="font-heading text-4xl sm:text-5xl lg:text-7xl leading-[1.1] tracking-tight mb-6">
-            Фінансовий партнер для вашого бізнесу
+          <h1 className="font-heading text-3xl sm:text-5xl lg:text-7xl leading-[1.1] tracking-tight mb-6">
+            Ми допомагаємо там, де немає готової відповіді
           </h1>
           <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-10 max-w-xl">
-            Фінансова ясність для вашого бізнесу
-            Допомагаємо компаніям і підприємцям вибудувати прозорий фінансовий та управлінський облік, взяти під контроль грошові потоки і залучити фінансування для росту.
-
+            Коли бізнес, організація або проєкт росте, змінює формат, залучає партнерів, отримує гранти чи виходить на новий рівень - попередні підходи до фінансів, податків і звітності можуть уже не відповідати реальності. 
+            Ми комплексно аналізуємо ситуацію: цифри, податкові наслідки, структуру роботи та вимоги до звітності. На цій основі допомагаємо обрати відповідну модель діяльності, вибудувати прозорий фінансовий і управлінський облік,
+            взяти під контроль грошові потоки та підготувати фінансову частину для залучення фінансування та подальшого зростання.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link to="/kontakty" className="inline-flex items-center justify-center px-7 py-3.5 bg-primary text-primary-foreground font-medium text-sm rounded hover:opacity-90 transition-opacity">

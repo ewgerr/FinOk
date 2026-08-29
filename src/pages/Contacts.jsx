@@ -12,11 +12,11 @@ export default function Contacts() {
             Оберіть зручний спосіб зв'язку або заповніть форму нижче.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-xl">
-            <a href="https://t.me/finok_ua" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 p-5 border border-border rounded-md hover:border-primary/30 transition-colors">
+            <a href="https://t.me/FinOkSupport_bot" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 p-5 border border-border rounded-md hover:border-primary/30 transition-colors">
               <Send className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">Telegram</p>
-                <p className="text-xs text-muted-foreground">@finok_ua</p>
+                <p className="text-xs text-muted-foreground">@@FinOkSupport_bot</p>
               </div>
             </a>
             <a href="mailto:info@finok.com.ua" className="flex items-center gap-4 p-5 border border-border rounded-md hover:border-primary/30 transition-colors">
