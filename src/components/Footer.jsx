@@ -36,8 +36,8 @@ export default function Footer() {
           <div>
             <h4 className="text-xs uppercase tracking-widest text-background/40 mb-4">Контакти</h4>
             <div className="space-y-3">
-              <a href="https://t.me/finok_ua" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-background/60 hover:text-background transition-colors">
-                <Send className="w-4 h-4" /> @finok_ua
+              <a href="https://t.me/FinOkSupport_bot" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-background/60 hover:text-background transition-colors">
+                <Send className="w-4 h-4" /> @FinOkSupport_bot
               </a>
               <a href="mailto:info@finok.com.ua" className="text-sm text-background/60 hover:text-background transition-colors">
                 info@finok.com.ua
