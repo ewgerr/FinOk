@@ -24,7 +24,7 @@ export default function HeroSection({ heroImage }) {
           <p className="text-xs uppercase tracking-[0.3em] text-primary mb-6 font-medium">
             Управлінський та фінансово-консалтинговий центр
           </p>
-          <h1 className="font-heading text-3xl sm:text-5xl lg:text-7xl leading-[1.1] tracking-tight mb-6">
+          <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl leading-[1.1] tracking-tight mb-6">
             Ми допомагаємо там, де немає готової відповіді
           </h1>
           <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-10 max-w-xl">
