@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import dotenv from 'dotenv';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'file:./dev.db';
+dotenv.config({ path: new URL('../.env', import.meta.url) });
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret';
 
