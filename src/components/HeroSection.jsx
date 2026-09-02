@@ -25,11 +25,11 @@ export default function HeroSection({ heroImage }) {
       transition={{ duration: 0.8, ease: "easeOut" }}
       className="max-w-3xl"
     >
-      <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4 font-semibold">
-          Управлінський та фінансово-консалтинговий центр
+      <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4 font-normal">
+        Управлінський та фінансово-консалтинговий центр
       </p>
       <h1 className="font-heading text-3xl sm:text-5xl lg:text-5xl xl:text-6xl leading-[1.15] tracking-tight mb-6">
-        ФІНАНСОВИЙ ПАРТНЕР ДЛЯ ВАШОГО БІЗНЕСУ
+        Фінансовйи партнер для власників бізнесу
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-2xl">
       Працюємо з власниками бізнесу на будь-якому етапі — від ідеї до масштабування.
@@ -38,16 +38,16 @@ export default function HeroSection({ heroImage }) {
         <br /><br />
         Аналізуємо поточний стан, знаходимо оптимальні рішення й вибудовуємо прозору фінансову систему — таку, що витримує перевірки, зрозуміла партнерам і працює на зростання бізнесу.
       </p>
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
+        <div className="flex flex-col sm:flex-row gap-4">
             <Link 
               to="/kontakty" 
-              className="inline-flex items-center justify-center px-7 sm:px-9 py-4 sm:py-4.5 bg-primary text-primary-foreground font-bold text-base sm:text-lg lg:text-xl rounded-lg hover:opacity-90 transition-all text-center shadow-md hover:shadow-lg"
+              className="inline-flex items-center justify-center px-6 sm:px-8 py-3.5 sm:py-4 bg-primary text-primary-foreground font-bold text-base sm:text-lg rounded-md hover:opacity-90 transition-opacity text-center shadow-sm"
             >
               Записатися на безкоштовну консультацію
             </Link>
             <Link 
               to="/prajs" 
-              className="inline-flex items-center justify-center px-7 sm:px-9 py-4 sm:py-4.5 border-2 border-foreground/25 text-foreground font-bold text-base sm:text-lg lg:text-xl rounded-lg hover:border-primary hover:text-primary transition-all text-center"
+              className="inline-flex items-center justify-center px-6 sm:px-8 py-3.5 sm:py-4 border-2 border-foreground/20 text-foreground font-bold text-base sm:text-lg rounded-md hover:border-primary hover:text-primary transition-colors text-center"
             >
               Переглянути послуги
             </Link>
