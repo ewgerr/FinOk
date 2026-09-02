@@ -1,7 +1,13 @@
 import { Telegraf, Markup } from 'telegraf';
+import { createRequire } from 'module';
 import { config } from './config.js';
 
 export const bot = new Telegraf(config.botToken);
+
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require('../backend/node_modules/@prisma/client');
+const nodemailer = require('../backend/node_modules/nodemailer');
+const prisma = new PrismaClient();
 
 // ======================================================
 // HELPERS
@@ -18,6 +24,41 @@ function getUserName(user) {
 function escapeTelegram(text) {
   if (!text) return '';
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function parseJsonSafely(value) {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || '';
+const SMTP_SECURE = String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true';
+const SMTP_ENABLED = Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS && SMTP_FROM);
+
+let smtpTransporter = null;
+
+function getSmtpTransporter() {
+  if (!SMTP_ENABLED) return null;
+  if (smtpTransporter) return smtpTransporter;
+  smtpTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+  return smtpTransporter;
 }
 
 const userStates = new Map();
@@ -315,11 +356,63 @@ bot.action(/^reply:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
 
   const userId = Number(ctx.match[1]);
-  adminSessions.set(ctx.from.id, { userId });
+  adminSessions.set(ctx.from.id, { type: 'telegram-chat', userId });
 
   await ctx.reply(`✍️ Введіть текст відповіді для клієнта (ID: <code>${userId}</code>):`, {
     parse_mode: 'HTML',
   });
+});
+
+bot.action(/^siteq_take:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ Немає доступу');
+  await ctx.answerCbQuery('✅ Взято в обробку');
+
+  const actionId = ctx.match[1];
+  const adminName = getUserName(ctx.from);
+
+  await ctx.editMessageReplyMarkup({
+    inline_keyboard: [
+      [Markup.button.callback(`👤 Взяв(ла): ${adminName}`, 'noop')],
+      [
+        Markup.button.callback('💬 Відповісти', `siteq_reply:${actionId}`),
+        Markup.button.callback('✅ Закрити запит', `siteq_done:${actionId}`),
+      ],
+    ],
+  });
+});
+
+bot.action(/^siteq_done:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ Немає доступу');
+  await ctx.answerCbQuery('✅ Запит закрито');
+
+  await ctx.editMessageReplyMarkup({
+    inline_keyboard: [[Markup.button.callback('✅ Питання опрацьовано', 'noop')]],
+  });
+});
+
+bot.action(/^siteq_reply:(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('⛔ Немає доступу');
+  await ctx.answerCbQuery();
+
+  const notificationId = ctx.match[1];
+  const notification = await prisma.notificationLog.findUnique({
+    where: { id: notificationId },
+  });
+  const payload = parseJsonSafely(notification?.payload) || {};
+
+  adminSessions.set(ctx.from.id, {
+    type: 'website-question',
+    notificationId,
+    email: payload.email || null,
+    firstName: payload.firstName || 'клієнт',
+  });
+
+  await ctx.reply(
+    `✍️ Введіть текст відповіді для клієнта <b>${escapeTelegram(payload.firstName || 'клієнт')}</b> (${escapeTelegram(payload.email || 'email не вказано')}):`,
+    {
+      parse_mode: 'HTML',
+    }
+  );
 });
 
 bot.action('noop', async (ctx) => ctx.answerCbQuery());
@@ -335,6 +428,59 @@ bot.on('text', async (ctx, next) => {
   if (isAdmin(userId) && adminSessions.has(userId)) {
     const session = adminSessions.get(userId);
     try {
+      if (session.type === 'website-question') {
+        if (!session.email) {
+          await ctx.reply('❌ Для цього запиту не вказано email. Зв’яжіться з клієнтом вручну.');
+          adminSessions.delete(userId);
+          return;
+        }
+
+        if (!SMTP_ENABLED) {
+          await ctx.reply(`❌ SMTP не налаштовано. Відповідь не відправлена. Email клієнта: ${session.email}`);
+          adminSessions.delete(userId);
+          return;
+        }
+
+        const transporter = getSmtpTransporter();
+        await transporter.sendMail({
+          from: SMTP_FROM,
+          to: session.email,
+          subject: 'Відповідь менеджера FinOK на ваше запитання',
+          text:
+`Вітаємо, ${session.firstName}!
+
+Надсилаємо відповідь менеджера FinOK на ваше запитання:
+
+${ctx.message.text}
+
+Якщо потрібні уточнення, просто дайте відповідь на цей лист або залиште нове звернення на сайті.
+
+З повагою,
+команда FinOK`,
+        });
+
+        await prisma.notificationLog.create({
+          data: {
+            channel: 'email',
+            type: 'question.reply.client',
+            recipient: session.email,
+            status: 'sent',
+            sentAt: new Date(),
+            payload: JSON.stringify({
+              notificationId: session.notificationId,
+              firstName: session.firstName,
+              email: session.email,
+              message: ctx.message.text,
+              source: 'telegram-admin-reply',
+            }),
+          },
+        });
+
+        await ctx.reply(`✅ Відповідь надіслана на email ${session.email}.`);
+        adminSessions.delete(userId);
+        return;
+      }
+
       await bot.telegram.sendMessage(
         session.userId,
         `👨‍💼 <b>Відповідь менеджера FinOK:</b>\n───────────────────────────────\n${escapeTelegram(ctx.message.text)}`,
@@ -344,6 +490,7 @@ bot.on('text', async (ctx, next) => {
       adminSessions.delete(userId);
     } catch {
       await ctx.reply('❌ Не вдалося відправити повідомлення.');
+      adminSessions.delete(userId);
     }
     return;
   }

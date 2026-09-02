@@ -49,7 +49,7 @@ export default function HeroSection({ heroImage }) {
               to="/prajs" 
               className="inline-flex items-center justify-center px-6 sm:px-8 py-3.5 sm:py-4 border-2 border-foreground/20 text-foreground font-bold text-base sm:text-lg rounded-md hover:border-primary hover:text-primary transition-colors text-center"
             >
-              Переглянути послуги
+              Переглянути прайс
             </Link>
         </div>
     </motion.div>

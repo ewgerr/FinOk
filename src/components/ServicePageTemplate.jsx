@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import FAQSection from "./FAQSection";
+import AskManagerSection from "./AskManagerSection";
 import ConsultationSection from "./ConsultationSection";
 
 export default function ServicePageTemplate({ category }) {
@@ -45,7 +45,7 @@ export default function ServicePageTemplate({ category }) {
         </div>
       </section>
 
-      <FAQSection items={category.faq} />
+      <AskManagerSection categoryTitle={category.title} />
       <ConsultationSection preselectedCategory={category.shortTitle} freeOnly={true} />
     </div>
   );

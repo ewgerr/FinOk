@@ -17,6 +17,17 @@ const cleanup = async (email) => {
   await prisma.consultation.deleteMany({ where: { email } });
 };
 
+const cleanupQuestionNotifications = async (email) => {
+  await prisma.notificationLog.deleteMany({
+    where: {
+      type: 'question.created.team',
+      payload: {
+        contains: email,
+      },
+    },
+  });
+};
+
 test.after(async () => {
   await prisma.$disconnect();
   await new Promise((resolve) => server.close(resolve));
@@ -56,4 +67,34 @@ test('free consultation can be created', async () => {
   assert.equal(json.consultationType, 'FREE');
   assert.equal(json.isPaid, false);
   await cleanup(email);
+});
+
+test('public question can be submitted', async () => {
+  const email = `question-${Date.now()}@example.com`;
+  const response = await fetch(`${baseUrl}/api/public/questions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      firstName: 'Question Test',
+      email,
+      phone: '+380501112244',
+      telegram: '@question_test',
+      category: 'Фізичні особи-підприємці',
+      sourcePage: '/fop',
+      message: 'Потрібна консультація щодо зміни системи оподаткування для ФОП.',
+    }),
+  });
+
+  assert.equal(response.status, 201);
+  const json = await response.json();
+  assert.equal(json.success, true);
+  assert.ok(json.id);
+
+  const notification = await prisma.notificationLog.findUnique({
+    where: { id: json.id },
+  });
+
+  assert.ok(notification);
+  assert.equal(notification.type, 'question.created.team');
+  await cleanupQuestionNotifications(email);
 });

@@ -53,11 +53,45 @@ async function sendConsultationNotification(notification) {
   });
 }
 
+async function sendWebsiteQuestionNotification(notification) {
+  const payload = parsePayload(notification.payload);
+  const questionId = notification.id;
+
+  const message =
+`💬 <b>НОВЕ ПИТАННЯ З САЙТУ</b>
+───────────────────────────────
+┌ 👤 <b>Клієнт:</b> ${escape(payload.firstName || 'Не вказано')}
+├ 📧 <b>Email:</b> <code>${escape(payload.email || 'Не вказано')}</code>
+├ 📞 <b>Телефон:</b> <code>${escape(payload.phone || 'Не вказано')}</code>
+├ 💬 <b>Telegram:</b> ${escape(payload.telegram || 'Не вказано')}
+├ 📂 <b>Категорія:</b> ${escape(payload.category || 'Загальне питання')}
+├ 🌐 <b>Сторінка:</b> ${escape(payload.sourcePage || 'Не вказано')}
+└ 🆔 <b>ID запиту:</b> <code>${escape(questionId)}</code>
+
+<b>Питання клієнта:</b>
+${escape(payload.message || '')}`;
+
+  const keyboard = [
+    [Markup.button.callback('🙋‍♂️ Взяти в роботу', `siteq_take:${questionId}`)],
+    [
+      Markup.button.callback('💬 Відповісти', `siteq_reply:${questionId}`),
+      Markup.button.callback('✅ Закрити', `siteq_done:${questionId}`),
+    ],
+  ];
+
+  await bot.telegram.sendMessage(config.teamChatId, message, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard(keyboard),
+  });
+}
+
 async function processNotification(notification) {
   if (notification.channel !== 'telegram') return;
   try {
     if (notification.type === 'consultation.created.team') {
       await sendConsultationNotification(notification);
+    } else if (notification.type === 'question.created.team') {
+      await sendWebsiteQuestionNotification(notification);
     }
     await prisma.notificationLog.update({
       where: { id: notification.id },

@@ -28,7 +28,7 @@ export const config = {
     process.env.SITE_URL ||
     'http://localhost:4000',
 
-  adminIds: String(process.env.TELEGRAM_ADMIN_IDS || '8751041240')
+  adminIds: String(process.env.TELEGRAM_ADMIN_IDS || '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean),

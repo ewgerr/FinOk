@@ -377,6 +377,15 @@ export const apiClient = {
     },
   },
 
+  support: {
+    askQuestion: async (payload) => {
+      return request('/api/public/questions', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+  },
+
   // ============================================================
   // AUTHENTICATION
   // ============================================================

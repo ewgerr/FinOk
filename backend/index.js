@@ -523,6 +523,16 @@ const consultationPatchSchema = z.object({
   internalNotes: z.string().max(4000).optional().nullable(),
 });
 
+const publicQuestionSchema = z.object({
+  firstName: z.string().min(1).max(120),
+  email: z.string().email(),
+  phone: z.string().min(3).max(100).optional().nullable(),
+  telegram: z.string().max(120).optional().nullable(),
+  category: z.string().max(120).optional().nullable(),
+  sourcePage: z.string().max(200).optional().nullable(),
+  message: z.string().min(10).max(4000),
+});
+
 const pipelinePreferenceSchema = z.object({
   order: z.object({
     NEW: z.array(z.string()).default([]),
@@ -1533,6 +1543,64 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
     if (error.code === 'P2025') throw new AppError(404, 'Consultation not found');
     throw error;
   }
+}));
+
+app.post('/api/public/questions', validateBody(publicQuestionSchema), asyncHandler(async (req, res) => {
+  const {
+    firstName,
+    email,
+    phone = null,
+    telegram = null,
+    category = null,
+    sourcePage = null,
+    message,
+  } = req.body;
+
+  const record = await queueNotification({
+    channel: 'telegram',
+    type: 'question.created.team',
+    recipient: process.env.TELEGRAM_TEAM_CHAT_ID || null,
+    payload: {
+      source: 'website-question',
+      firstName,
+      email,
+      phone,
+      telegram,
+      category,
+      sourcePage,
+      message,
+      createdAt: new Date().toISOString(),
+    },
+  });
+
+  if (!record) {
+    throw new AppError(500, 'Could not submit question');
+  }
+
+  await logAudit({
+    entityType: 'PublicQuestion',
+    entityId: record.id,
+    action: 'CREATE',
+    afterState: {
+      firstName,
+      email,
+      phone,
+      telegram,
+      category,
+      sourcePage,
+      message,
+    },
+    metadata: {
+      notificationId: record.id,
+      channel: 'telegram',
+    },
+  });
+
+  res.status(201).json({
+    success: true,
+    id: record.id,
+    message: 'Question submitted successfully',
+  });
 }));
 
 // ============ ADMIN ENDPOINTS ============
