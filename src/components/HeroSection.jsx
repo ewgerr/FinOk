@@ -25,31 +25,33 @@ export default function HeroSection({ heroImage }) {
       transition={{ duration: 0.8, ease: "easeOut" }}
       className="max-w-3xl"
     >
-      <p className="text-xs uppercase tracking-[0.25em] text-primary mb-4 font-medium">
-        Управлінський та фінансово-консалтинговий центр
+      <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4 font-semibold">
+          Управлінський та фінансово-консалтинговий центр
       </p>
       <h1 className="font-heading text-3xl sm:text-5xl lg:text-5xl xl:text-6xl leading-[1.15] tracking-tight mb-6">
-        Ми допомагаємо там, де немає готової відповіді
+        ФІНАНСОВИЙ ПАРТНЕР ДЛЯ ВАШОГО БІЗНЕСУ
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-2xl">
-        Коли бізнес, організація або проєкт росте, змінює формат, залучає партнерів, отримує гранти чи виходить на новий рівень — попередні підходи до фінансів, податків і звітності можуть уже не відповідати реальності. 
-        Ми комплексно аналізуємо ситуацію: цифри, податкові наслідки, структуру роботи та вимоги до звітності. На цій основі допомагаємо обрати відповідну модель діяльності, вибудувати прозорий фінансовий і управлінський облік,
-        взяти під контроль грошові потоки та підготувати фінансову частину для залучення фінансування та подальшого зростання.
+      Працюємо з власниками бізнесу на будь-якому етапі — від ідеї до масштабування.
+        <br /><br />
+      Допомагаємо навести лад у фінансах і обліку, коли бізнес змінюється: з'являються нові партнери, потрібні гранти або настав час зростати.
+        <br /><br />
+        Аналізуємо поточний стан, знаходимо оптимальні рішення й вибудовуємо прозору фінансову систему — таку, що витримує перевірки, зрозуміла партнерам і працює на зростання бізнесу.
       </p>
-      <div className="flex flex-col sm:flex-row gap-4">
-        <Link 
-          to="/kontakty" 
-          className="inline-flex items-center justify-center px-7 py-3.5 bg-primary text-primary-foreground font-medium text-sm rounded hover:opacity-90 transition-opacity"
-        >
-          Записатися на безкоштовну консультацію
-        </Link>
-        <Link 
-          to="/prajs" 
-          className="inline-flex items-center justify-center px-7 py-3.5 border border-foreground/20 text-foreground font-medium text-sm rounded hover:border-primary hover:text-primary transition-colors"
-        >
-          Переглянути послуги
-        </Link>
-      </div>
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-5">
+            <Link 
+              to="/kontakty" 
+              className="inline-flex items-center justify-center px-7 sm:px-9 py-4 sm:py-4.5 bg-primary text-primary-foreground font-bold text-base sm:text-lg lg:text-xl rounded-lg hover:opacity-90 transition-all text-center shadow-md hover:shadow-lg"
+            >
+              Записатися на безкоштовну консультацію
+            </Link>
+            <Link 
+              to="/prajs" 
+              className="inline-flex items-center justify-center px-7 sm:px-9 py-4 sm:py-4.5 border-2 border-foreground/25 text-foreground font-bold text-base sm:text-lg lg:text-xl rounded-lg hover:border-primary hover:text-primary transition-all text-center"
+            >
+              Переглянути послуги
+            </Link>
+        </div>
     </motion.div>
   </div>
 </section>
