@@ -30,7 +30,7 @@ export default function HeroSection({ heroImage }) {
         <br />
       </p>
       <h1 className="font-heading text-3xl sm:text-5xl lg:text-5xl xl:text-6xl leading-[1.15] tracking-tight mb-6">
-        Фінансовйи партнер для вашого бізнесу
+        Фінансовйи партнер для <br /> вашого бізнесу
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-2xl">
       Працюємо з власниками бізнесу на будь-якому етапі — від ідеї до масштабування.
