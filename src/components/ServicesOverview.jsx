@@ -32,7 +32,7 @@ export default function ServicesOverview() {
                     <Icon className="w-5 h-5 text-primary shrink-0" />
                     <div>
                       <h3 className="font-heading text-lg">{cat.title}</h3>
-                      <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">{cat.description}</p>
+                      <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">{cat.shortDescription}</p>
                     </div>
                   </div>
                   <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0" />
