@@ -6,7 +6,7 @@ export default function Contacts() {
     <div className="pt-24">
       <section className="py-16 lg:py-24">
         <div className="max-w-7xl mx-auto px-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary mb-4">Контакти</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4">Контакти</p>
           <h1 className="font-heading text-4xl lg:text-6xl tracking-tight mb-6">Зв'яжіться з нами</h1>
           <p className="text-lg text-muted-foreground max-w-xl mb-12">
             Оберіть зручний спосіб зв'язку або заповніть форму нижче.

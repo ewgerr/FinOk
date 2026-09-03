@@ -10,7 +10,7 @@ export default function ServicesOverview() {
     <section className="py-20 lg:py-32">
       <div className="max-w-7xl mx-auto px-6">
         <div className="max-w-2xl mb-16">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Послуги</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-primary mb-3">Послуги</p>
           <h2 className="font-heading text-3xl lg:text-5xl tracking-tight">Повний спектр фінансового супроводу</h2>
         </div>
         <div className="space-y-4">

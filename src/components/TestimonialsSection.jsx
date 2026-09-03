@@ -52,7 +52,7 @@ export default function TestimonialsSection() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-16">
           <div className="max-w-2xl">
-            <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Відгуки</p>
+            <p className="text-sm uppercase tracking-[0.2em] text-primary mb-3">Відгуки</p>
             <h2 className="font-heading text-3xl lg:text-5xl tracking-tight">Що кажуть клієнти</h2>
           </div>
           <button

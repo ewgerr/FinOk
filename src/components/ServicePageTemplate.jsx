@@ -8,7 +8,7 @@ export default function ServicePageTemplate({ category }) {
       {/* Header */}
       <section className="py-16 lg:py-24">
         <div className="max-w-7xl mx-auto px-6">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary mb-4">Послуги</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4">Послуги</p>
           <h1 className="font-heading text-4xl lg:text-6xl tracking-tight mb-4">{category.title}</h1>
           <p className="text-lg text-muted-foreground max-w-2xl">{category.description}</p>
         </div>

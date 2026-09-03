@@ -96,4 +96,9 @@
     font-variation-settings: "opsz" 144, "SOFT" 50;
     letter-spacing: -0.025em;
   }
+
+  h1, h2 {
+    text-wrap: balance;
+    overflow-wrap: break-word;
+  }
 }

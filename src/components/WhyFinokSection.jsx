@@ -13,7 +13,7 @@ export default function WhyFinokSection() {
     <section className="py-20 lg:py-32 bg-card">
       <div className="max-w-7xl mx-auto px-6">
         <div className="max-w-2xl mb-16">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary mb-3">Переваги</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-primary mb-3">Переваги</p>
           <h2 className="font-heading text-3xl lg:text-5xl tracking-tight">Чому ФінОк</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border rounded-md overflow-hidden">

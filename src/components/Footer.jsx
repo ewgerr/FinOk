@@ -14,7 +14,7 @@ export default function Footer() {
             </p>
           </div>
           <div>
-            <h4 className="text-xs uppercase tracking-widest text-background/40 mb-4">Послуги</h4>
+            <h4 className="text-sm uppercase tracking-[0.2em] text-background/40 mb-4">Послуги</h4>
             <div className="space-y-2">
               {serviceCategories.map(c => (
                 <Link key={c.id} to={c.slug} className="block text-sm text-background/60 hover:text-background transition-colors">
@@ -24,7 +24,7 @@ export default function Footer() {
             </div>
           </div>
           <div>
-            <h4 className="text-xs uppercase tracking-widest text-background/40 mb-4">Компанія</h4>
+            <h4 className="text-sm uppercase tracking-[0.2em] text-background/40 mb-4">Компанія</h4>
             <div className="space-y-2">
               {[{l:"Про нас",t:"/pro-nas"},{l:"Прайс",t:"/prajs"},{l:"Блог",t:"/blog"},{l:"Контакти",t:"/kontakty"}].map(i => (
                 <Link key={i.t} to={i.t} className="block text-sm text-background/60 hover:text-background transition-colors">
@@ -34,7 +34,7 @@ export default function Footer() {
             </div>
           </div>
           <div>
-            <h4 className="text-xs uppercase tracking-widest text-background/40 mb-4">Контакти</h4>
+            <h4 className="text-sm uppercase tracking-[0.2em] text-background/40 mb-4">Контакти</h4>
             <div className="space-y-3">
               <a href="https://t.me/FinOkSupport_bot" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-background/60 hover:text-background transition-colors">
                 <Send className="w-4 h-4" /> @FinOkSupport_bot

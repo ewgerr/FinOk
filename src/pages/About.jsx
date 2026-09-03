@@ -17,7 +17,7 @@ export default function About() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-primary mb-4">Про компанію</p>
+              <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4">Про компанію</p>
               <h1 className="font-heading text-4xl lg:text-5xl tracking-tight mb-6">
                 Звільняємо бізнес від фінансового хаосу
               </h1>
