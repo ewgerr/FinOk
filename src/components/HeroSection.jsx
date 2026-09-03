@@ -18,7 +18,7 @@ export default function HeroSection({ heroImage }) {
   <div className="absolute top-0 left-[15%] w-px h-full bg-border/40 hidden lg:block pointer-events-none" />
   <div className="absolute top-0 left-[85%] w-px h-full bg-border/40 hidden lg:block pointer-events-none" />
 
-  <div className="relative max-w-7xl mx-auto px-6 w-full">
+  <div className="relative max-w-6xl mx-auto px-6 w-full">
     <motion.div
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
