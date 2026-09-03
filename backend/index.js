@@ -35,7 +35,7 @@ const JWT_RESET_EXPIRES_IN = process.env.JWT_RESET_EXPIRES_IN || '1h';
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 const COOKIE_SECURE = NODE_ENV === 'production';
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || `http://localhost:${PORT}`;
-const ALLOW_ONRENDER_ORIGINS = String(process.env.ALLOW_ONRENDER_ORIGINS || 'true').toLowerCase() === 'true';
+const ALLOW_ONRENDER_ORIGINS = String(process.env.ALLOW_ONRENDER_ORIGINS || 'false').toLowerCase() === 'true';
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER || '';
@@ -1545,7 +1545,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
   }
 }));
 
-app.post('/api/public/questions', validateBody(publicQuestionSchema), asyncHandler(async (req, res) => {
+app.post('/api/public/questions', publicFormLimiter, validateBody(publicQuestionSchema), asyncHandler(async (req, res) => {
   const {
     firstName,
     email,

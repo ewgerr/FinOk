@@ -27,9 +27,10 @@ export default function HeroSection({ heroImage }) {
     >
       <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4 font-normal">
         Управлінський та фінансово-консалтинговий центр
+        <br />
       </p>
       <h1 className="font-heading text-3xl sm:text-5xl lg:text-5xl xl:text-6xl leading-[1.15] tracking-tight mb-6">
-        Фінансовйи партнер для власників бізнесу
+        Фінансовйи партнер для вашого бізнесу
       </h1>
       <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-2xl">
       Працюємо з власниками бізнесу на будь-якому етапі — від ідеї до масштабування.
@@ -47,9 +48,9 @@ export default function HeroSection({ heroImage }) {
             </Link>
             <Link 
               to="/prajs" 
-              className="inline-flex items-center justify-center px-6 sm:px-8 py-3.5 sm:py-4 border-2 border-foreground/20 text-foreground font-bold text-base sm:text-lg rounded-md hover:border-primary hover:text-primary transition-colors text-center"
+              className="inline-flex items-center justify-center px-6 sm:px-6 py-3.5 sm:py-4 border-2 border-foreground/20 text-foreground  text-base sm:text-lg rounded-md hover:border-primary hover:text-primary transition-colors text-center"
             >
-              Переглянути прайс
+              Переглянути послуги
             </Link>
         </div>
     </motion.div>
