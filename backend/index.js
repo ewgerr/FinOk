@@ -93,6 +93,10 @@ const buildEmailContent = ({ type, payload, recipient }) => {
       subject: 'Вам призначено нову консультацію',
       text: `Вам призначено нову консультацію.\n\nКлієнт: ${normalized?.clientName || '—'}\nЧас: ${normalized?.scheduledAt || '—'}\nGoogle Meet: ${normalized?.googleMeetLink || '—'}\nКалендар: ${normalized?.googleCalendarLink || '—'}`,
     },
+    'consultation.assigned.client': {
+      subject: 'Ваш менеджер FinOK призначений',
+      text: `Ви записалися на консультацію у FinOK.\n\nПослуга: ${normalized?.serviceName || '—'}\nДата та час: ${normalized?.scheduledAt || '—'}\nВаш менеджер: ${normalized?.managerName || '—'}\nEmail менеджера: ${normalized?.managerEmail || '—'}\nТелефон менеджера: ${normalized?.managerPhone || '—'}\nGoogle Meet: ${normalized?.googleMeetLink || '—'}\nДодати в Google Calendar: ${normalized?.googleCalendarLink || '—'}\n\nЯкщо потрібні зміни, просто дайте відповідь на цей лист.`,
+    },
     'consultation.status.changed.client': {
       subject: 'Оновлення статусу консультації',
       text: defaultMessage,
@@ -1017,6 +1021,56 @@ const buildGoogleCalendarLink = ({ title, description, startDate, endDate, locat
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 };
 
+const formatDateTimeUk = (value) => {
+  if (!value) return '—';
+  try {
+    return new Intl.DateTimeFormat('uk-UA', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
+};
+
+const buildConsultationCalendarPayload = (consultation) => {
+  const startAt = consultation.scheduledAt || consultation.preferredDateTime || null;
+  const endAt = startAt
+    ? addMinutes(new Date(startAt), Number(consultation.estimatedDuration || 15))
+    : null;
+  const managerName = consultation.assignedManager
+    ? `${consultation.assignedManager.firstName || ''} ${consultation.assignedManager.lastName || ''}`.trim() || consultation.assignedManager.email || '—'
+    : '—';
+  const serviceName = consultation.serviceName || consultation.service?.name || 'Безкоштовна консультація';
+  const description = [
+    `Клієнт: ${`${consultation.firstName || ''} ${consultation.lastName || ''}`.trim() || consultation.email}`,
+    `Email: ${consultation.email || '—'}`,
+    `Телефон: ${consultation.phone || '—'}`,
+    `Менеджер: ${managerName}`,
+    `Канал зв'язку: ${consultation.preferredContactMethod || '—'}`,
+    `Тип: ${consultation.consultationType || '—'}`,
+    `Послуга: ${serviceName}`,
+    `Google Meet: ${consultation.googleMeetLink || '—'}`,
+    `Нотатки: ${consultation.description || '—'}`,
+  ].join('\n');
+
+  return {
+    title: `Консультація FinOK: ${`${consultation.firstName || ''} ${consultation.lastName || ''}`.trim() || consultation.email}`,
+    description,
+    serviceName,
+    startAt,
+    endAt,
+    prettyScheduledAt: formatDateTimeUk(startAt),
+    googleCalendarLink: buildGoogleCalendarLink({
+      title: `Консультація FinOK: ${`${consultation.firstName || ''} ${consultation.lastName || ''}`.trim() || consultation.email}`,
+      description,
+      startDate: startAt,
+      endDate: endAt,
+      location: consultation.googleMeetLink || 'Online консультація',
+    }),
+  };
+};
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -1511,7 +1565,9 @@ app.post('/api/entities/Consultation', publicFormLimiter, validateBody(consultat
 app.get('/api/entities/Consultation', authMiddleware, asyncHandler(async (req, res) => {
   const { consultationType, status, serviceId } = req.query;
 
-  const where = {};
+  const where = {
+    ...getManagerRoleFilter(req.user),
+  };
   if (consultationType) where.consultationType = consultationType;
   if (status) where.status = status;
   if (serviceId) where.serviceId = serviceId;
@@ -1560,8 +1616,11 @@ app.get('/api/entities/Consultation/available-slots', asyncHandler(async (req, r
 // Get single consultation
 app.get('/api/entities/Consultation/:id', authMiddleware, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const consultation = await prisma.consultation.findUnique({
-    where: { id },
+  const consultation = await prisma.consultation.findFirst({
+    where: {
+      id,
+      ...getManagerRoleFilter(req.user),
+    },
     include: { service: true },
   });
 
@@ -1576,14 +1635,24 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
   const { status, scheduledAt, estimatedDuration, assignedManagerId, internalNotes } = req.body;
 
   try {
-    const before = await prisma.consultation.findUnique({ where: { id } });
+    const before = await prisma.consultation.findFirst({
+      where: {
+        id,
+        ...getManagerRoleFilter(req.user),
+      },
+    });
     if (!before) throw new AppError(404, 'Consultation not found');
+
+    if (!isAdminRole(req.user.role) && assignedManagerId !== undefined && assignedManagerId !== before.assignedManagerId) {
+      throw new AppError(403, 'Managers cannot reassign consultations');
+    }
 
     const nextAssignedManagerId = assignedManagerId === null ? null : (assignedManagerId || before.assignedManagerId || null);
     const nextStatus = status || before.status;
     const beforeStage = resolvePipelineStage(before);
     const afterStage = resolvePipelineStage({ status: nextStatus, assignedManagerId: nextAssignedManagerId });
     const shouldResetStageClock = beforeStage !== afterStage;
+    const hasAssignmentChanged = nextAssignedManagerId !== before.assignedManagerId;
 
     if (nextStatus === 'CONFIRMED' && !nextAssignedManagerId) {
       throw new AppError(400, 'Select a manager before confirming consultation');
@@ -1608,6 +1677,8 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
         confirmedBy: { select: pickUserFields },
       },
     });
+
+    const calendarPayload = buildConsultationCalendarPayload(consultation);
 
     await logAudit({
       actorUserId: req.user.id,
@@ -1654,27 +1725,7 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
       }
     }
 
-    if (nextAssignedManagerId && consultation.assignedManager) {
-      const startAt = consultation.preferredDateTime || consultation.scheduledAt;
-      const endAt = startAt
-        ? addMinutes(new Date(startAt), Number(consultation.estimatedDuration || 15))
-        : null;
-      const googleCalendarLink = buildGoogleCalendarLink({
-        title: `Консультація: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
-        description: [
-          `Клієнт: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
-          `Email: ${consultation.email}`,
-          `Телефон: ${consultation.phone || '—'}`,
-          `Канал зв'язку: ${consultation.preferredContactMethod}`,
-          `Тип: ${consultation.consultationType}`,
-          `Послуга: ${consultation.serviceName || consultation.service?.name || 'Безкоштовна консультація'}`,
-          `Нотатки: ${consultation.description || '—'}`,
-        ].join('\n'),
-        startDate: startAt,
-        endDate: endAt,
-        location: 'Online',
-      });
-
+    if (hasAssignmentChanged && nextAssignedManagerId && consultation.assignedManager) {
       await queueNotification({
         consultationId: consultation.id,
         userId: consultation.assignedManager.id,
@@ -1685,10 +1736,28 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
           consultationId: consultation.id,
           managerId: consultation.assignedManager.id,
           clientName: `${consultation.firstName} ${consultation.lastName || ''}`.trim(),
-          googleCalendarLink,
+          googleCalendarLink: calendarPayload.googleCalendarLink,
           googleMeetLink: consultation.googleMeetLink || 'https://meet.google.com/new',
-          scheduledAt: consultation.preferredDateTime || consultation.scheduledAt || null,
+          scheduledAt: calendarPayload.prettyScheduledAt,
           assignedAt: new Date().toISOString(),
+        },
+      });
+
+      await queueNotification({
+        consultationId: consultation.id,
+        userId: consultation.assignedManager.id,
+        channel: 'email',
+        type: 'consultation.assigned.client',
+        recipient: consultation.email,
+        payload: {
+          consultationId: consultation.id,
+          managerName: `${consultation.assignedManager.firstName || ''} ${consultation.assignedManager.lastName || ''}`.trim() || consultation.assignedManager.email,
+          managerEmail: consultation.assignedManager.email,
+          managerPhone: consultation.assignedManager.phone || '—',
+          serviceName: calendarPayload.serviceName,
+          googleCalendarLink: calendarPayload.googleCalendarLink,
+          googleMeetLink: consultation.googleMeetLink || 'https://meet.google.com/new',
+          scheduledAt: calendarPayload.prettyScheduledAt,
         },
       });
     }
@@ -2191,7 +2260,13 @@ app.get('/api/admin/notifications', authMiddleware, requireRole(['ADMIN', 'MANAG
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
-  res.json(logs.map((item) => ({
+  const scopedLogs = logs.filter((item) => {
+    if (isAdminRole(req.user.role)) return true;
+    const assignedManagerId = item.consultation?.assignedManagerId || null;
+    return assignedManagerId === req.user.id || item.userId === req.user.id;
+  });
+
+  res.json(scopedLogs.map((item) => ({
     ...item,
     payload: parseJsonSafely(item.payload),
   })));
@@ -2977,13 +3052,15 @@ app.post('/api/admin/ai/run', authMiddleware, requireRole(['ADMIN', 'MANAGER', '
 }));
 
 app.get('/api/admin/calendar/sync/providers', authMiddleware, requireRole(['ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER']), asyncHandler(async (req, res) => {
-  const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  const googleOAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   res.json({
     providers: [
       {
         key: 'google',
         title: 'Google Calendar',
-        enabled: googleEnabled,
+        enabled: true,
+        oauthEnabled: googleOAuthEnabled,
+        mode: 'deeplink',
         scopes: ['calendar.events.readonly', 'calendar.events'],
       },
     ],
@@ -3014,18 +3091,10 @@ app.post('/api/admin/calendar/sync/push', authMiddleware, requireRole(['ADMIN', 
   });
   if (!consultation) throw new AppError(404, 'Consultation not found');
 
-  const startAt = consultation.scheduledAt || consultation.preferredDateTime;
-  const endAt = startAt
-    ? addMinutes(new Date(startAt), Number(consultation.estimatedDuration || 45))
-    : null;
-
-  const eventPayload = {
-    title: `Консультація: ${consultation.firstName} ${consultation.lastName || ''}`.trim(),
-    description: consultation.description || '',
-    startAt,
-    endAt,
-    attendeeEmail: consultation.email,
-  };
+  const eventPayload = buildConsultationCalendarPayload(consultation);
+  if (!eventPayload.startAt || !eventPayload.endAt) {
+    throw new AppError(400, 'Consultation must have a date and time before adding to Google Calendar');
+  }
 
   await logAudit({
     actorUserId: req.user.id,
@@ -3036,16 +3105,17 @@ app.post('/api/admin/calendar/sync/push', authMiddleware, requireRole(['ADMIN', 
     metadata: {
       provider,
       eventPayload,
-      simulated: true,
+      mode: 'deeplink',
     },
   });
 
   res.json({
     ok: true,
     provider,
-    simulated: true,
-    message: 'Sync adapter stub is ready. Wire OAuth tokens + API call to enable production sync.',
+    mode: 'deeplink',
+    message: 'Подію підготовлено. Відкрийте Google Calendar і збережіть запис у своєму календарі.',
     eventPayload,
+    googleCalendarLink: eventPayload.googleCalendarLink,
   });
 }));
 
