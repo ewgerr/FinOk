@@ -42,6 +42,21 @@ const iconMap = {
   filters: Filter,
 };
 
+const groupMeta = {
+  main: {
+    label: "Основне",
+    description: "Щоденна робота",
+  },
+  clients: {
+    label: "Клієнти та зв'язок",
+    description: "Аналітика, клієнти, inbox",
+  },
+  operations: {
+    label: "Операції",
+    description: "Автоматизації, документи, CRM",
+  },
+};
+
 export default function AdminSidebar({
   tabs,
   activeTab,
@@ -50,6 +65,13 @@ export default function AdminSidebar({
   isCollapsed,
   setIsCollapsed,
 }) {
+  const groupedTabs = tabs.reduce((acc, tab) => {
+    const key = tab.group || "main";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(tab);
+    return acc;
+  }, {});
+
   return (
     <aside
       className={`sticky top-0 h-screen shrink-0 border-r border-border/70 bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${
@@ -80,37 +102,48 @@ export default function AdminSidebar({
             </div>
           </div>
         )}
-        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          {tabs.map((tab) => {
-            const Icon = iconMap[tab.value] || LayoutDashboard;
-            const isActive = activeTab === tab.value;
-            return (
-              <button
-                key={tab.value}
-                onClick={() => setActiveTab(tab.value)}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-200 border ${
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                    : "border-transparent text-foreground/70 hover:bg-white hover:border-border/80 hover:text-foreground"
-                } ${isCollapsed ? "justify-center" : ""}`}
-                title={isCollapsed ? tab.label : ""}
-              >
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-primary-foreground/15" : "bg-muted/60"}`}>
-                  <Icon className="w-4 h-4 shrink-0" />
-                </span>
-                {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
-                {tab.value === "notifications" && unreadNotificationsCount > 0 && (
-                  <span
-                    className={`min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] leading-none ${
-                      isActive ? "bg-primary-foreground text-primary" : "bg-destructive text-destructive-foreground"
-                    }`}
+        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+          {Object.entries(groupedTabs).map(([groupKey, groupTabs]) => (
+            <div key={groupKey} className="space-y-1.5">
+              {!isCollapsed && groupMeta[groupKey] && (
+                <div className="px-2 pb-1">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{groupMeta[groupKey].label}</p>
+                  <p className="text-xs text-foreground/55 mt-1">{groupMeta[groupKey].description}</p>
+                </div>
+              )}
+
+              {groupTabs.map((tab) => {
+                const Icon = iconMap[tab.value] || LayoutDashboard;
+                const isActive = activeTab === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveTab(tab.value)}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-200 border ${
+                      isActive
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "border-transparent text-foreground/70 hover:bg-white hover:border-border/80 hover:text-foreground"
+                    } ${isCollapsed ? "justify-center" : ""}`}
+                    title={isCollapsed ? tab.label : ""}
                   >
-                    {unreadNotificationsCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-primary-foreground/15" : "bg-muted/60"}`}>
+                      <Icon className="w-4 h-4 shrink-0" />
+                    </span>
+                    {!isCollapsed && <span className="flex-1 text-left">{tab.label}</span>}
+                    {tab.value === "notifications" && unreadNotificationsCount > 0 && (
+                      <span
+                        className={`min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] leading-none ${
+                          isActive ? "bg-primary-foreground text-primary" : "bg-destructive text-destructive-foreground"
+                        }`}
+                      >
+                        {unreadNotificationsCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
     </aside>
