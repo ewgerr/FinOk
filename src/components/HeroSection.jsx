@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 export default function HeroSection({ heroImage }) {
   return (
-   <section className="relative min-h-[calc(100vh-5rem)] flex items-center overflow-hidden pt-28 pb-16 lg:pt-36 lg:pb-24">
+  <section className="relative min-h-[calc(100vh-5rem)] flex items-center overflow-hidden pt-20 pb-16 lg:pt-24 lg:pb-24">
   {/* Background */}
   <div className="absolute inset-0 pointer-events-none">
     <img 
