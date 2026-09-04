@@ -26,7 +26,7 @@ export default function ForWhoSection() {
               >
                 <Icon className="w-5 h-5 text-primary mb-4" />
                 <h3 className="font-heading text-lg mb-1">{s.title}</h3>
-                <p className="text-sm text-muted-foreground">{s.description}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">{s.description}</p>
               </motion.div>
             );
           })}

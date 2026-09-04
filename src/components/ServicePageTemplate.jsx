@@ -10,7 +10,7 @@ export default function ServicePageTemplate({ category }) {
         <div className="max-w-7xl mx-auto px-6">
           <p className="text-sm uppercase tracking-[0.2em] text-primary mb-4">Послуги</p>
           <h1 className="font-heading text-4xl lg:text-6xl tracking-tight mb-4">{category.title}</h1>
-          <p className="text-lg text-muted-foreground max-w-2xl">{category.description}</p>
+          <p className="text-lg text-muted-foreground max-w-2xl whitespace-pre-line">{category.description}</p>
         </div>
       </section>
 
@@ -33,7 +33,7 @@ export default function ServicePageTemplate({ category }) {
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="font-heading text-xl mb-2">{s.name}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{s.description}</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{s.description}</p>
                   </div>
                   {/* <div className="flex items-center gap-4 shrink-0">
                     <span className="text-lg font-heading text-primary whitespace-nowrap">{s.price}</span>
