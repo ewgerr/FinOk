@@ -665,6 +665,18 @@ export const apiClient = {
           )}/contract.pdf`
         );
       },
+
+      sendDocument: async (consultationId, payload) => {
+        return request(
+          `/api/admin/payments/${encodeURIComponent(
+            consultationId
+          )}/send-document`,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          }
+        );
+      },
     },
 
     // ----------------------------------------------------------
