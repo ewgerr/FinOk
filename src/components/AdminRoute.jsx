@@ -1,9 +1,10 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import AccessDenied from "@/components/AccessDenied";
 
 export default function AdminRoute() {
   const { user, isAuthenticated, isLoadingAuth, authChecked, authError } = useAuth();
+  const location = useLocation();
 
   if (isLoadingAuth || !authChecked) {
     return (
@@ -14,7 +15,8 @@ export default function AdminRoute() {
   }
 
   if (authError || !isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
 
   const allowedRoles = ["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"];

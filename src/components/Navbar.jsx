@@ -26,6 +26,7 @@ export default function Navbar() {
     { label: "Блог", to: "/blog" },
     { label: "Контакти", to: "/kontakty" },
   ];
+  const canOpenControlRoom = ["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"].includes(user?.role);
 
   return (
     <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? "bg-background/90 backdrop-blur-md border-b border-border shadow-sm" : "bg-transparent"}`}>
@@ -65,9 +66,9 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
-          {user?.role === 'ADMIN' && (
+          {canOpenControlRoom && (
             <Link to={ADMIN_PATH} className="text-sm font-body text-foreground/70 hover:text-primary transition-colors">
-              Admin
+              Кабінет
             </Link>
           )}
           <Link to="/zapis" className="ml-2 px-5 py-2 bg-primary text-primary-foreground text-sm font-medium rounded hover:opacity-90 transition-opacity">
@@ -108,9 +109,9 @@ export default function Navbar() {
                 {l.label}
               </NavLink>
             ))}
-            {user?.role === 'ADMIN' && (
+            {canOpenControlRoom && (
               <Link to={ADMIN_PATH} className="block py-3 text-sm text-foreground/70 hover:text-primary">
-                Admin
+                Кабінет
               </Link>
             )}
             <Link to="/zapis" className="block mt-4 text-center px-5 py-3 bg-primary text-primary-foreground text-sm font-medium rounded">

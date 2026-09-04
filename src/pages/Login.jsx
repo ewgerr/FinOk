@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { apiClient } from "@/api/backendClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import { ADMIN_PATH } from "@/lib/adminPath";
 
 export default function Login() {
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,8 +20,12 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await apiClient.auth.loginViaEmailPassword(email, password);
-      window.location.href = "/";
+      const result = await apiClient.auth.loginViaEmailPassword(email, password);
+      const params = new URLSearchParams(location.search);
+      const returnTo = params.get("returnTo");
+      const staffRoles = ["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "VIEWER"];
+      const nextPath = returnTo || (staffRoles.includes(result?.user?.role) ? ADMIN_PATH : "/");
+      window.location.href = nextPath;
     } catch (err) {
       setError(err.message || "Invalid email or password");
     } finally {

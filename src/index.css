@@ -102,3 +102,36 @@
     overflow-wrap: break-word;
   }
 }
+
+@layer components {
+  .admin-workspace main {
+    scroll-behavior: smooth;
+  }
+
+  .admin-workspace table {
+    @apply rounded-xl overflow-hidden;
+  }
+
+  .admin-workspace thead {
+    @apply bg-muted/50 backdrop-blur-sm;
+  }
+
+  .admin-workspace tbody tr {
+    @apply transition-colors;
+  }
+
+  .admin-workspace tbody tr:hover {
+    @apply bg-muted/20;
+  }
+
+  .admin-workspace input,
+  .admin-workspace textarea,
+  .admin-workspace button[role="combobox"] {
+    @apply rounded-xl border-border/80 bg-white;
+  }
+
+  .admin-workspace .recharts-cartesian-grid line {
+    stroke: hsl(var(--border));
+    stroke-opacity: 0.55;
+  }
+}
