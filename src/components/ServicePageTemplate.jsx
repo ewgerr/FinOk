@@ -33,7 +33,20 @@ export default function ServicePageTemplate({ category }) {
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="font-heading text-xl mb-2">{s.name}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{s.description}</p>
+                    <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                      {s.description.split('\n').map((line, index) => {
+                        const isNote = line.trim().startsWith('*');
+
+                        return (
+                          <p
+                            key={`${s.name}-${index}`}
+                            className={isNote ? 'mt-2 text-xs italic text-muted-foreground/80' : ''}
+                          >
+                            {line}
+                          </p>
+                        );
+                      })}
+                    </div>
                   </div>
                   {/* <div className="flex items-center gap-4 shrink-0">
                     <span className="text-lg font-heading text-primary whitespace-nowrap">{s.price}</span>
