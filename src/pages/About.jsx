@@ -70,7 +70,7 @@ export default function About() {
               viewport={{ once: true }}
               className="rounded-md overflow-hidden"
             >
-              <img src={ABOUT_IMG} alt="Про ФінОк" className="w-full h-80 lg:h-[450px] object-cover" />
+              <img src={ABOUT_IMG} alt="Про ФінОк" className="w-full h-80 lg:h-[600px] object-cover" />
             </motion.div>
           </div>
         </div>
