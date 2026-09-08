@@ -89,13 +89,7 @@ export default function About() {
                 transition={{ delay: i * 0.1 }}
                 className="flex gap-5"
               >
-                {/* Якщо це тег img або компонент Next/Image */}
-                <img 
-                  src={v.image} /* Замініть на вашу змінну з фото */
-                  alt={v.title}
-                  className="w-32 h-24 rounded-2xl object-cover shrink-0 mt-1" 
-                />
-                
+                <v.icon className="w-6 h-6 text-primary shrink-0 mt-1" />
                 <div>
                   <h3 className="font-heading text-lg mb-1">{v.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{v.desc}</p>
