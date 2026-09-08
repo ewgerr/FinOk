@@ -109,55 +109,29 @@ export default function About() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
             {teamMembers.map((member, index) => (
-              // <motion.div
-              //   key={member.name}
-              //   initial={{ opacity: 0, y: 20 }}
-              //   whileInView={{ opacity: 1, y: 0 }}
-              //   viewport={{ once: true }}
-              //   transition={{ delay: index * 0.08 }}
-              //   className="rounded-2xl border border-border bg-card p-6 lg:p-8 shadow-sm"
-              // >
-              //   <div className="flex flex-col items-center text-center mb-6">
-              //     {member.image ? (
-              //       <img
-              //         src={member.image}
-              //         alt={member.name}
-              //         className="w-28 h-28 rounded-full object-cover border border-border shadow-sm mb-4"
-              //       />
-              //     ) : (
-              //       <div className="w-28 h-28 rounded-full border border-border bg-muted flex items-center justify-center text-2xl font-heading text-primary mb-4">
-              //         {member.name
-              //           .split(" ")
-              //           .map((part) => part[0])
-              //           .join("")
-              //           .slice(0, 2)}
-              //       </div>
               <motion.div
-                  key={member.name}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.08 }}
-                  className="rounded-2xl border border-border bg-card p-6 lg:p-8 shadow-sm"
-                >
-                  <div className="flex flex-col items-center text-center mb-6">
-                    {member.image ? (
-                      <img
-                        src={member.image}
-                        alt={member.name}
-                        // Змінено: прямокутник (w-56 h-40), заокруглення (rounded-2xl)
-                        className="w-56 h-40 rounded-2xl object-cover border border-border shadow-sm mb-4"
-                      />
-                    ) : (
-                      // Змінено запасний блок (ініціали) для збереження тих самих пропорцій
-                      <div className="w-56 h-40 rounded-2xl border border-border bg-muted flex items-center justify-center text-3xl font-heading text-primary mb-4">
-                        {member.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </div>
-                              
+                key={member.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.08 }}
+                className="rounded-2xl border border-border bg-card p-6 lg:p-8 shadow-sm"
+              >
+                <div className="flex flex-col items-center text-center mb-6">
+                  {member.image ? (
+                    <img
+                      src={member.image}
+                      alt={member.name}
+                      className="w-28 h-28 rounded-md object-cover border border-border shadow-sm mb-4"
+                    />
+                  ) : (
+                    <div className="w-28 h-28 rounded-md border border-border bg-muted flex items-center justify-center text-2xl font-heading text-primary mb-4">
+                      {member.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .join("")
+                        .slice(0, 2)}
+                    </div>
                   )}
 
                   <h3 className="font-heading text-2xl mb-1">{member.name}</h3>
