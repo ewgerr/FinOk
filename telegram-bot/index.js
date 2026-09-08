@@ -1,5 +1,16 @@
-import { bot } from './bot.js';
-import { startNotificationWorker } from './notifications.js';
+import { bot, shutdownBotResources } from './bot.js';
+import { startNotificationWorker, stopNotificationWorker } from './notifications.js';
+
+async function shutdown(signal) {
+  try {
+    await stopNotificationWorker();
+    bot.stop(signal);
+    await shutdownBotResources();
+    console.log(`🛑 Telegram bot stopped by ${signal}`);
+  } catch (error) {
+    console.error('❌ Telegram bot shutdown error:', error);
+  }
+}
 
 async function main() {
 
@@ -32,10 +43,14 @@ main().catch((error) => {
 
 process.once(
   'SIGINT',
-  () => bot.stop('SIGINT')
+  () => {
+    shutdown('SIGINT').finally(() => process.exit(0));
+  }
 );
 
 process.once(
   'SIGTERM',
-  () => bot.stop('SIGTERM')
+  () => {
+    shutdown('SIGTERM').finally(() => process.exit(0));
+  }
 );
