@@ -349,13 +349,20 @@ const queueNotification = async ({ consultationId = null, userId = null, channel
         }
       : payload;
 
+    // If recipient is missing for telegram, try to fallback to env TELEGRAM_TEAM_CHAT_ID
+    let recipientToStore = recipient;
+    if (!recipientToStore && channel === 'telegram' && process.env.TELEGRAM_TEAM_CHAT_ID) {
+      recipientToStore = process.env.TELEGRAM_TEAM_CHAT_ID;
+      console.log(`[notification] fallback recipient applied for type=${type} -> ${recipientToStore}`);
+    }
+
     const record = await prisma.notificationLog.create({
       data: {
         consultationId,
         userId,
         channel,
         type,
-        recipient,
+        recipient: recipientToStore,
         payload: serializeData(payloadToStore),
         status: 'queued',
       },

@@ -414,10 +414,12 @@ export async function startNotificationWorker() {
     isTickRunning = true;
 
     try {
-      await processDeadlineReminders();
-      await recoverStaleProcessingNotifications();
+        await processDeadlineReminders();
+        await recoverStaleProcessingNotifications();
 
-      const notifications = await prisma.notificationLog.findMany({
+        console.log('🔎 Worker tick: scanning for telegram notifications...');
+
+        const notifications = await prisma.notificationLog.findMany({
         where: {
           channel: 'telegram',
           status: {
@@ -428,9 +430,13 @@ export async function startNotificationWorker() {
         take: config.notificationWorker.batchSize,
       });
 
+        console.log(`📦 Worker found ${notifications.length} telegram notifications (batch ${config.notificationWorker.batchSize})`);
+
       for (const notification of notifications) {
         const parsedPayload = parsePayload(notification.payload);
         const attempts = Number(getPayloadMeta(parsedPayload).attempts || 0);
+
+          console.log(`➡️ Notification ${notification.id} type=${notification.type} recipient=${notification.recipient} status=${notification.status} attempts=${attempts}`);
 
         if (attempts >= config.notificationWorker.maxRetryAttempts) {
           continue;
@@ -442,6 +448,7 @@ export async function startNotificationWorker() {
 
         const claimed = await claimNotification(notification.id);
         if (!claimed) {
+          console.log(`✋ Notification ${notification.id} was not claimed (probably processed by another worker).`);
           continue;
         }
 
