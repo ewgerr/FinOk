@@ -122,10 +122,10 @@ export default function About() {
                     <img
                       src={member.image}
                       alt={member.name}
-                      className="w-28 h-28 rounded-md object-cover border border-border shadow-sm mb-4"
+                      className="w-40 h-29 rounded-full object-cover border border-border shadow-sm mb-4"
                     />
                   ) : (
-                    <div className="w-28 h-28 rounded-md border border-border bg-muted flex items-center justify-center text-2xl font-heading text-primary mb-4">
+                    <div className="w-40 h-29 rounded-full border border-border bg-muted flex items-center justify-center text-2xl font-heading text-primary mb-4">
                       {member.name
                         .split(" ")
                         .map((part) => part[0])
