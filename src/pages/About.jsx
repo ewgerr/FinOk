@@ -122,10 +122,12 @@ export default function About() {
                     <img
                       src={member.image}
                       alt={member.name}
-                      className="w-40 h-29 rounded-full object-cover border border-border shadow-sm mb-4"
+                      // Змінено: вертикальний прямокутник (w-48 h-64), невелике заокруглення (rounded-xl), фокус на голові (object-top)
+                      className="w-48 h-64 rounded-xl object-cover object-top border border-border shadow-sm mb-4"
                     />
                   ) : (
-                    <div className="w-40 h-29 rounded-full border border-border bg-muted flex items-center justify-center text-2xl font-heading text-primary mb-4">
+                    // Змінено запасний блок (ініціали) для збереження тих самих пропорцій та заокруглень
+                    <div className="w-48 h-64 rounded-xl border border-border bg-muted flex items-center justify-center text-4xl font-heading text-primary mb-4">
                       {member.name
                         .split(" ")
                         .map((part) => part[0])
