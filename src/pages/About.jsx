@@ -33,6 +33,7 @@ const teamMembers = [
   {
     name: "Галина Ковальов",
     role: "ФІНАНСОВИЙ ЕКСПЕРТ ТА КОНСУЛЬТАНТ З УПРАВЛІННЯ БІЗНЕСОМ Фінанси • Облік • Управління • Антикризові рішення",
+    role1: "Фінанси • Облік • Управління • Антикризові рішення",
     experience: "Доктор філософії (PhD) з економіки · 25+ років досвіду",
     image: HALYNA_IMG,
     bio: "Практика в бухгалтерському обліку, аудиті, управлінському обліку та стратегічному плануванні — реалізовані проєкти в агропромисловості, будівництві, виробництві, e-commerce, фінансах та HoReCa.",
@@ -140,6 +141,7 @@ export default function About() {
 
                   <h3 className="font-heading text-2xl mb-1">{member.name}</h3>
                   <p className="text-primary text-sm font-medium">{member.role}</p>
+                  <p className="text-primary text-sm font-medium">{member.role1}</p>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground mt-2">
                     {member.experience}
                   </p>
