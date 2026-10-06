@@ -1198,7 +1198,18 @@ app.get('/api/blog/posts/:slug', asyncHandler(async (req, res) => {
   });
 }));
 
-app.post('/api/analytics/visit', validateBody(visitSchema), asyncHandler(async (req, res) => {
+// Temporary logging for analytics visit to debug 400 responses
+const logAnalyticsVisit = (req, res, next) => {
+  try {
+    console.log('[DEBUG] /api/analytics/visit from', req.headers.origin || req.ip);
+    console.log('[DEBUG] visit payload:', JSON.stringify(req.body));
+  } catch (e) {
+    console.warn('[DEBUG] Failed to log analytics visit', e?.message || e);
+  }
+  next();
+};
+
+app.post('/api/analytics/visit', logAnalyticsVisit, validateBody(visitSchema), asyncHandler(async (req, res) => {
   const userAgent = String(req.headers['user-agent'] || '').slice(0, 200);
   const fallbackVisitorId = `${String(req.ip || 'unknown-ip').slice(0, 40)}:${userAgent.slice(0, 40)}`;
   const visitorId = String(req.body.visitorId || fallbackVisitorId).trim().slice(0, 120);
@@ -1319,7 +1330,19 @@ app.post('/api/auth/login', authLimiter, validateBody(loginSchema), asyncHandler
   });
 }));
 
-app.post('/api/auth/refresh', authLimiter, validateBody(refreshSchema), asyncHandler(async (req, res) => {
+// Temporary logging for auth refresh to debug 400/401 responses
+const logAuthRefresh = (req, res, next) => {
+  try {
+    console.log('[DEBUG] /api/auth/refresh from', req.ip);
+    console.log('[DEBUG] headers:', JSON.stringify({ cookie: req.headers.cookie }));
+    console.log('[DEBUG] body:', JSON.stringify(req.body));
+  } catch (e) {
+    console.warn('[DEBUG] Failed to log auth refresh', e?.message || e);
+  }
+  next();
+};
+
+app.post('/api/auth/refresh', authLimiter, logAuthRefresh, validateBody(refreshSchema), asyncHandler(async (req, res) => {
   const refreshToken = req.body?.refreshToken || req.cookies?.finok_refresh_token;
 
   if (!refreshToken) {
@@ -1776,7 +1799,19 @@ app.patch('/api/entities/Consultation/:id', authMiddleware, validateBody(consult
   }
 }));
 
-app.post('/api/public/questions', publicFormLimiter, validateBody(publicQuestionSchema), asyncHandler(async (req, res) => {
+// Temporary logging middleware for debugging public question submissions
+const logPublicQuestion = (req, res, next) => {
+  try {
+    console.log('[DEBUG] /api/public/questions request from', req.headers.origin || req.ip);
+    console.log('[DEBUG] Headers:', JSON.stringify({ origin: req.headers.origin, referer: req.headers.referer, 'content-type': req.headers['content-type'] }));
+    console.log('[DEBUG] Body payload:', JSON.stringify(req.body));
+  } catch (e) {
+    console.warn('[DEBUG] Failed to log public question payload', e?.message || e);
+  }
+  next();
+};
+
+app.post('/api/public/questions', publicFormLimiter, logPublicQuestion, validateBody(publicQuestionSchema), asyncHandler(async (req, res) => {
   const {
     firstName,
     email,
