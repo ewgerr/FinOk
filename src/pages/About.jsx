@@ -4,7 +4,7 @@ import { Shield, Eye, Scale, Zap } from "lucide-react";
 const ABOUT_IMG = "https://media.base44.com/images/public/6a0f3d95a129fb21b5a871de/cdc791503_generated_db12da0a.png";
 const HALYNA_IMG = new URL("../../image/Галина.png", import.meta.url).href;
 const VIRA_IMG = new URL("../../image/Vira.jpeg", import.meta.url).href;
-const OKSANA_IMG = new URL("../../image/Oksana.jpeg", import.meta.url).href;
+const OKSANA_IMG = new URL("../../image/Oksana.png", import.meta.url).href;
 
 const values = [
   { icon: Eye, title: "Прозорість", desc: "Реальні ціни на сайті. Ніяких прихованих платежів і дрібного шрифту." },
